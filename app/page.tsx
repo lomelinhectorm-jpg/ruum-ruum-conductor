@@ -8,6 +8,16 @@ import {
   Settings, Star, User, Wallet, X, Loader,
   Eye, EyeOff, Upload, Shield
 } from "lucide-react";
+import {
+  RRBadge,
+  RRBottomNav,
+  RRButton,
+  RRCard,
+  RREvidenceGallery,
+  RRStatCard,
+  RRTimeline,
+} from "@/components/rr";
+import { formatMoney } from "@/lib/design-system/utils";
 
 // ─── SUPABASE ────────────────────────────────────────────────────────────────
 const sb = createClient(
@@ -80,12 +90,12 @@ function cx(...classes: (string | false | undefined)[]) {
 
 // ─── ONBOARDING HELPERS ──────────────────────────────────────────────────────
 const inputCls = (err?: string) =>
-  `w-full border ${err ? "border-red-400 bg-red-50" : "border-slate-300"} rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1565FF] bg-white`
+  `w-full border ${err ? "border-rr-danger bg-rr-dangerLight" : "border-rr-gray300"} rounded-rrMd px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rr-primary bg-white`
 
 function OLabel({ children, req }: { children: React.ReactNode; req?: boolean }) {
   return (
-    <label className="block text-xs font-semibold text-[#6B7280] mb-1 uppercase tracking-wide">
-      {children}{req && <span className="text-red-500 ml-0.5">*</span>}
+    <label className="block text-xs font-semibold text-rr-gray500 mb-1 uppercase tracking-wide">
+      {children}{req && <span className="text-rr-danger ml-0.5">*</span>}
     </label>
   )
 }
@@ -654,25 +664,25 @@ function Header({ onOpenSettings, conductor }: {
   conductor: ConductorPerfil | null
 }) {
   return (
-    <header className="flex items-center justify-between bg-[#0A1F44] px-5 py-3 flex-shrink-0">
+    <header className="flex items-center justify-between bg-rr-secondary px-5 py-3 flex-shrink-0">
       <div className="flex items-center gap-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1565FF]">
-          <span className="text-xs font-black text-[#0A1F44]">RR</span>
+        <div className="flex h-8 w-8 items-center justify-center rounded-rrSm bg-rr-primary">
+          <span className="text-xs font-black text-rr-secondary">RR</span>
         </div>
         <div>
           <p className="text-xs font-bold text-white leading-tight">Ruum Ruum</p>
-          <p className="text-[10px] text-[#94A3B8] leading-tight">Conductor</p>
+          <p className="text-[10px] text-white/50 leading-tight">Conductor</p>
         </div>
       </div>
       <div className="flex items-center gap-3">
         {conductor && (
           <div className="flex items-center gap-1.5">
-            <Star className="h-3 w-3 text-[#FF6D00] fill-[#FF6D00]" />
+            <Star className="h-3 w-3 text-rr-warning fill-rr-warning" />
             <span className="text-xs font-semibold text-white">{conductor.calificacion.toFixed(1)}</span>
           </div>
         )}
         <button type="button" onClick={onOpenSettings}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-700 text-slate-300 hover:bg-slate-600">
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15">
           <User className="h-4 w-4" />
         </button>
       </div>
@@ -683,11 +693,9 @@ function Header({ onOpenSettings, conductor }: {
 function StatusBadge({ disponibilidad }: { disponibilidad: string }) {
   const activo = disponibilidad === "Disponible"
   return (
-    <span className={cx("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold",
-      activo ? "bg-[#E7F9EF] text-[#008F3A]" : "bg-slate-200 text-slate-600")}>
-      <span className={cx("h-2 w-2 rounded-full", activo ? "animate-pulse bg-[#00C853]" : "bg-slate-400")} />
+    <RRBadge variant={activo ? "success" : "neutral"} pulse={activo}>
       {disponibilidad}
-    </span>
+    </RRBadge>
   );
 }
 
@@ -704,60 +712,65 @@ function PanelView({ conductor, viajes, onDisponibilidadChange, cargando }: {
   const gananciasSemana = viajes.filter(v => v.status !== "Cancelado").reduce((s, v) => s + (v.pago_conductor ?? 0), 0)
 
   return (
-    <section className="fade-in p-5 pb-24">
-      <div className="mb-5 rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
+    <section className="rr-fade-in p-5 pb-24">
+      <RRCard className="mb-5 p-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
             {cargando
-              ? <div className="h-5 w-32 animate-pulse bg-slate-100 rounded mb-1" />
-              : <h2 className="text-lg font-bold text-[#111827]">Hola, {conductor?.nombre ?? "Conductor"}</h2>
+              ? <div className="h-5 w-32 animate-pulse bg-rr-gray100 rounded mb-1" />
+              : <h2 className="text-lg font-bold text-rr-black">Hola, {conductor?.nombre ?? "Conductor"}</h2>
             }
-            <p className="text-sm text-[#6B7280]">Que tengas un excelente día de trabajo.</p>
+            <p className="text-sm text-rr-gray500">Que tengas un excelente día de trabajo.</p>
           </div>
           {conductor && <StatusBadge disponibilidad={conductor.disponibilidad} />}
         </div>
-        <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-[#F8FAFC] p-3">
-          <span className="text-sm font-semibold text-slate-700">Recibir nuevos viajes</span>
+        <div className="flex items-center justify-between rounded-rrMd border border-rr-gray100 bg-rr-bg p-3">
+          <span className="text-sm font-semibold text-rr-gray700">Recibir nuevos viajes</span>
           <label className="relative inline-flex cursor-pointer items-center">
             <input type="checkbox" className="peer sr-only" checked={disponible}
               onChange={e => onDisponibilidadChange(e.target.checked ? "Disponible" : "No disponible")} />
-            <span className="h-6 w-12 rounded-full bg-slate-300 transition-colors peer-checked:bg-[#00C853]" />
-            <span className="absolute left-0.5 h-5 w-5 rounded-full border-2 border-slate-300 bg-white transition-transform peer-checked:translate-x-6 peer-checked:border-[#00C853]" />
+            <span className="h-6 w-12 rounded-full bg-rr-gray300 transition-colors peer-checked:bg-rr-success" />
+            <span className="absolute left-0.5 h-5 w-5 rounded-full border-2 border-rr-gray300 bg-white transition-transform peer-checked:translate-x-6 peer-checked:border-rr-success" />
           </label>
         </div>
-      </div>
-      <h3 className="mb-3 text-sm font-bold text-slate-700">Resumen de esta semana</h3>
+      </RRCard>
+
+      <h3 className="mb-3 text-sm font-bold text-rr-gray700">Resumen de esta semana</h3>
       <div className="mb-5 grid grid-cols-2 gap-3">
-        <div className="rounded-xl bg-[#1565FF] p-4 text-[#0A1F44] shadow-md">
-          <p className="mb-1 text-xs text-[#0A1F44]/70">Tus viajes</p>
-          {cargando ? <div className="h-8 w-12 animate-pulse bg-[#1565FF]/50 rounded" />
-            : <p className="text-2xl font-bold">{viajes.length}</p>}
-          <p className="mt-1 text-[10px] text-[#0A1F44]/60">{viajesCompletados} completados</p>
-        </div>
-        <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
-          <p className="mb-1 text-xs text-[#6B7280]">Ganancia estimada</p>
-          {cargando ? <div className="h-8 w-20 animate-pulse bg-slate-100 rounded" />
-            : <p className="text-2xl font-bold text-[#111827]">${gananciasSemana.toLocaleString()}</p>}
-          <p className="mt-1 text-[10px] text-[#94A3B8]">Antes de gastos</p>
-        </div>
+        <RRStatCard
+          label="Tus viajes"
+          value={cargando ? "—" : viajes.length}
+          helper={`${viajesCompletados} completados`}
+          icon={Car}
+          tone="primary"
+        />
+        <RRStatCard
+          label="Ganancia estimada"
+          value={cargando ? "—" : formatMoney(gananciasSemana)}
+          helper="Antes de gastos"
+          icon={Wallet}
+          tone="success"
+        />
       </div>
+
       {viajeActivo && (
-        <div className="mb-5 rounded-xl border-l-4 border-[#1565FF] bg-white p-4 shadow-sm">
-          <div className="flex justify-between items-center mb-2">
-            <span className="bg-[#1565FF] text-[#0A1F44] text-xs font-bold px-2 py-1 rounded-full">{viajeActivo.status.toUpperCase()}</span>
-            <span className="text-xs text-[#94A3B8]">{viajeActivo.folio}</span>
+        <RRCard className="mb-5 border-l-4 border-rr-primary p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <RRBadge variant="process">{viajeActivo.status.toUpperCase()}</RRBadge>
+            <span className="text-xs text-rr-gray500">{viajeActivo.folio}</span>
           </div>
-          <p className="text-sm font-bold text-[#111827] mb-1">{viajeActivo.origen_calle} → {viajeActivo.destino_calle}</p>
-          {viajeActivo.vehiculos && <p className="text-xs text-[#6B7280]">{viajeActivo.vehiculos.marca} {viajeActivo.vehiculos.modelo} · {viajeActivo.vehiculos.placas}</p>}
-          <p className="text-sm font-bold text-[#00A846] mt-2">${viajeActivo.pago_conductor.toLocaleString()}</p>
-        </div>
+          <p className="mb-1 text-sm font-bold text-rr-black">{viajeActivo.origen_calle} → {viajeActivo.destino_calle}</p>
+          {viajeActivo.vehiculos && <p className="text-xs text-rr-gray500">{viajeActivo.vehiculos.marca} {viajeActivo.vehiculos.modelo} · {viajeActivo.vehiculos.placas}</p>}
+          <p className="mt-2 text-sm font-bold text-rr-success">{formatMoney(viajeActivo.pago_conductor)}</p>
+        </RRCard>
       )}
-      <h3 className="mb-3 text-sm font-bold text-slate-700">Avisos importantes</h3>
-      <div className="flex gap-3 rounded-xl border border-[#FFE2CC] bg-[#FFF7ED] p-3">
-        <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#FF6D00]" />
+
+      <h3 className="mb-3 text-sm font-bold text-rr-gray700">Avisos importantes</h3>
+      <div className="flex gap-3 rounded-rrLg border border-rr-warningLight bg-rr-warningLight p-3">
+        <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-rr-warning" />
         <div>
-          <p className="text-sm font-semibold text-[#9A4300]">Mantén tus documentos al día</p>
-          <p className="mt-1 text-xs text-[#C95A00]">Verifica tus documentos en Configuración para operar sin interrupciones.</p>
+          <p className="text-sm font-semibold text-rr-black">Mantén tus documentos al día</p>
+          <p className="mt-1 text-xs text-rr-gray700">Verifica tus documentos en Configuración para operar sin interrupciones.</p>
         </div>
       </div>
     </section>
@@ -793,59 +806,57 @@ function VijesView({ conductor, viajes, onAceptar, onCambiarStatus, cargando }: 
   }
 
   return (
-    <section className="fade-in p-5 pb-24">
-      <h2 className="mb-4 text-xl font-bold text-[#111827]">Tus viajes</h2>
-      <div className="mb-5 flex gap-2 rounded-lg bg-slate-100 p-1">
+    <section className="rr-fade-in p-5 pb-24">
+      <h2 className="mb-4 text-xl font-bold text-rr-black">Tus viajes</h2>
+      <div className="mb-5 flex gap-2 rounded-rrMd bg-rr-gray100 p-1">
         {(["solicitados","aceptados"] as TripTab[]).map(tab => (
           <button key={tab} type="button" onClick={() => setActiveTab(tab)}
-            className={cx("flex-1 rounded-md py-2 text-sm font-semibold transition-all",
-              activeTab === tab ? "bg-white text-[#111827] shadow-sm" : "text-[#6B7280]")}>
+            className={cx("flex-1 rounded-rrSm py-2 text-sm font-semibold transition-all",
+              activeTab === tab ? "bg-white text-rr-black shadow-sm" : "text-rr-gray500")}>
             {tab === "solicitados" ? `Solicitados (${solicitados.length})` : `Aceptados (${aceptados.length})`}
           </button>
         ))}
       </div>
-      {cargando && <div className="flex items-center justify-center py-12 text-[#94A3B8] gap-2"><Loader className="h-5 w-5 animate-spin" /><span className="text-sm">Cargando viajes...</span></div>}
+      {cargando && <div className="flex items-center justify-center py-12 text-rr-gray500 gap-2"><Loader className="h-5 w-5 animate-spin" /><span className="text-sm">Cargando viajes...</span></div>}
       {!cargando && activeTab === "solicitados" && (
         <div className="space-y-4">
           {solicitados.length === 0
-            ? <div className="rounded-xl border border-[#E5E7EB] bg-white p-8 text-center shadow-sm"><Car className="h-10 w-10 text-slate-200 mx-auto mb-2" /><p className="text-sm text-[#94A3B8]">No hay viajes disponibles en este momento.</p><p className="text-xs text-slate-300 mt-1">Activa tu disponibilidad para recibir ofertas.</p></div>
+            ? <RRCard className="p-8 text-center"><Car className="h-10 w-10 text-rr-gray200 mx-auto mb-2" /><p className="text-sm text-rr-gray500">No hay viajes disponibles en este momento.</p><p className="text-xs text-rr-gray300 mt-1">Activa tu disponibilidad para recibir ofertas.</p></RRCard>
             : solicitados.map(viaje => (
-              <div key={viaje.id} className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
+              <RRCard key={viaje.id}>
                 <div className="mb-3 flex items-start justify-between">
-                  <span className="rounded-full bg-[#1565FF] px-2 py-1 text-xs font-bold text-[#0A1F44]">NUEVA OFERTA</span>
-                  <span className="text-xs text-[#94A3B8]">{viaje.folio}</span>
+                  <RRBadge variant="pending">NUEVA OFERTA</RRBadge>
+                  <span className="text-xs text-rr-gray500">{viaje.folio}</span>
                 </div>
                 <div className="mb-4 flex gap-3">
                   <div className="flex flex-col items-center pt-1">
-                    <div className="h-2.5 w-2.5 rounded-full bg-[#00C853]" />
-                    <div className="my-1 h-8 w-0.5 bg-slate-200" />
-                    <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                    <div className="h-2.5 w-2.5 rounded-full bg-rr-success" />
+                    <div className="my-1 h-8 w-0.5 bg-rr-gray200" />
+                    <div className="h-2.5 w-2.5 rounded-full bg-rr-danger" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-[#6B7280]">Origen</p>
-                    <p className="text-sm font-semibold leading-tight text-[#111827] truncate">{[viaje.origen_calle, viaje.origen_colonia].filter(Boolean).join(", ")}</p>
-                    <p className="mt-2 text-xs text-[#6B7280]">Destino</p>
-                    <p className="text-sm font-semibold leading-tight text-[#111827] truncate">{[viaje.destino_calle, viaje.destino_colonia].filter(Boolean).join(", ")}</p>
+                    <p className="text-xs text-rr-gray500">Origen</p>
+                    <p className="text-sm font-semibold leading-tight text-rr-black truncate">{[viaje.origen_calle, viaje.origen_colonia].filter(Boolean).join(", ")}</p>
+                    <p className="mt-2 text-xs text-rr-gray500">Destino</p>
+                    <p className="text-sm font-semibold leading-tight text-rr-black truncate">{[viaje.destino_calle, viaje.destino_colonia].filter(Boolean).join(", ")}</p>
                   </div>
                 </div>
-                <div className="mb-4 space-y-2 border-t border-slate-100 pt-3">
-                  {viaje.vehiculos && <div className="flex justify-between text-sm"><span className="text-[#6B7280]">Vehículo:</span><span className="font-medium text-[#111827]">{viaje.vehiculos.marca} {viaje.vehiculos.modelo} · {viaje.vehiculos.transmision ?? ""}</span></div>}
-                  {viaje.fecha_programada && <div className="flex justify-between text-sm"><span className="text-[#6B7280]">Fecha:</span><span className="font-medium text-[#111827]">{viaje.fecha_programada} {viaje.hora_programada ? `· ${viaje.hora_programada.slice(0,5)}` : ""}</span></div>}
+                <div className="mb-4 space-y-2 border-t border-rr-gray100 pt-3">
+                  {viaje.vehiculos && <div className="flex justify-between text-sm"><span className="text-rr-gray500">Vehículo:</span><span className="font-medium text-rr-black">{viaje.vehiculos.marca} {viaje.vehiculos.modelo} · {viaje.vehiculos.transmision ?? ""}</span></div>}
+                  {viaje.fecha_programada && <div className="flex justify-between text-sm"><span className="text-rr-gray500">Fecha:</span><span className="font-medium text-rr-black">{viaje.fecha_programada} {viaje.hora_programada ? `· ${viaje.hora_programada.slice(0,5)}` : ""}</span></div>}
                   <div className="flex items-center justify-between pt-2">
-                    <span className="text-sm font-bold text-slate-700">Tu ganancia estimada:</span>
-                    <span className="text-xl font-bold text-[#00A846]">${viaje.pago_conductor.toLocaleString()}</span>
+                    <span className="text-sm font-bold text-rr-gray700">Tu ganancia estimada:</span>
+                    <span className="text-xl font-bold text-rr-success">{formatMoney(viaje.pago_conductor)}</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <button type="button" onClick={() => handleRechazar(viaje)}
-                    className="rounded-lg border border-slate-300 py-3 font-semibold text-slate-600 hover:bg-[#F8FAFC]">Rechazar</button>
-                  <button type="button" onClick={() => handleAceptar(viaje)} disabled={aceptando === viaje.id}
-                    className="flex items-center justify-center gap-2 rounded-lg bg-[#1565FF] py-3 font-semibold text-[#0A1F44] hover:brightness-95 disabled:opacity-60">
+                  <RRButton variant="secondary" onClick={() => handleRechazar(viaje)}>Rechazar</RRButton>
+                  <RRButton variant="primary" onClick={() => handleAceptar(viaje)} disabled={aceptando === viaje.id}>
                     {aceptando === viaje.id ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                     Aceptar
-                  </button>
+                  </RRButton>
                 </div>
-              </div>
+              </RRCard>
             ))
           }
         </div>
@@ -853,26 +864,26 @@ function VijesView({ conductor, viajes, onAceptar, onCambiarStatus, cargando }: 
       {!cargando && activeTab === "aceptados" && (
         <div className="space-y-4">
           {aceptados.length === 0
-            ? <div className="rounded-xl border border-[#E5E7EB] bg-white p-8 text-center shadow-sm"><Check className="h-10 w-10 text-slate-200 mx-auto mb-2" /><p className="text-sm text-[#94A3B8]">No tienes viajes aceptados activos.</p></div>
+            ? <RRCard className="p-8 text-center"><Check className="h-10 w-10 text-rr-gray200 mx-auto mb-2" /><p className="text-sm text-rr-gray500">No tienes viajes aceptados activos.</p></RRCard>
             : aceptados.map(viaje => (
-              <div key={viaje.id} className="rounded-xl border-l-4 border-[#1565FF] bg-white p-4 shadow-sm">
+              <RRCard key={viaje.id} className="border-l-4 border-rr-primary">
                 <div className="mb-3 flex items-start justify-between">
-                  <span className="rounded-full bg-[#1565FF] px-2 py-1 text-xs font-bold text-[#0A1F44]">{viaje.status.toUpperCase()}</span>
-                  <span className="text-xs text-[#94A3B8]">{viaje.folio}</span>
+                  <RRBadge variant="process">{viaje.status.toUpperCase()}</RRBadge>
+                  <span className="text-xs text-rr-gray500">{viaje.folio}</span>
                 </div>
-                <p className="mb-1 text-sm font-bold text-[#111827]">{viaje.origen_calle} → {viaje.destino_calle}</p>
-                {viaje.vehiculos && <p className="mb-1 text-xs text-[#6B7280]">{viaje.vehiculos.marca} {viaje.vehiculos.modelo} · {viaje.vehiculos.placas}</p>}
-                {viaje.origen_contacto && <p className="text-xs text-[#6B7280] mb-1">Contacto: {viaje.origen_contacto} {viaje.origen_telefono && `· ${viaje.origen_telefono}`}</p>}
-                {viaje.instrucciones && <p className="text-xs text-[#C95A00] bg-[#FFF7ED] rounded p-2 mt-2">{viaje.instrucciones}</p>}
-                <p className="text-sm font-bold text-[#00A846] mt-2">${viaje.pago_conductor.toLocaleString()}</p>
+                <p className="mb-1 text-sm font-bold text-rr-black">{viaje.origen_calle} → {viaje.destino_calle}</p>
+                {viaje.vehiculos && <p className="mb-1 text-xs text-rr-gray500">{viaje.vehiculos.marca} {viaje.vehiculos.modelo} · {viaje.vehiculos.placas}</p>}
+                {viaje.origen_contacto && <p className="text-xs text-rr-gray500 mb-1">Contacto: {viaje.origen_contacto} {viaje.origen_telefono && `· ${viaje.origen_telefono}`}</p>}
+                {viaje.instrucciones && <p className="text-xs text-rr-black bg-rr-warningLight rounded-rrSm p-2 mt-2">{viaje.instrucciones}</p>}
+                <p className="text-sm font-bold text-rr-success mt-2">{formatMoney(viaje.pago_conductor)}</p>
                 <div className="mt-3 space-y-2">
-                  {viaje.status === "Conductor en camino" && <button type="button" onClick={() => onCambiarStatus(viaje.id, "Recolección en proceso", "Llegada al origen")} className="w-full rounded-lg bg-[#0A1F44] py-3 font-semibold text-white hover:bg-slate-800">✓ Confirmé llegada al origen</button>}
-                  {viaje.status === "Recolección en proceso" && <button type="button" onClick={() => setEvidenceViaje(viaje)} className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#0A1F44] py-3 font-semibold text-white hover:bg-slate-800"><Camera className="h-4 w-4" /> Cargar Evidencia Inicial</button>}
-                  {viaje.status === "Evidencia inicial pendiente" && <button type="button" onClick={() => onCambiarStatus(viaje.id, "Traslado en curso", "Traslado iniciado")} className="w-full rounded-lg bg-[#0A1F44] py-3 font-semibold text-[#FFFFFF] hover:bg-[#2a2a2a]">🚗 Iniciar traslado</button>}
-                  {viaje.status === "Traslado en curso" && <button type="button" onClick={() => onCambiarStatus(viaje.id, "Entrega en proceso", "Llegada al destino")} className="w-full rounded-lg bg-[#0A1F44] py-3 font-semibold text-white hover:bg-slate-800">✓ Llegué al destino</button>}
-                  {viaje.status === "Entrega en proceso" && <button type="button" onClick={() => setEvidenceViaje(viaje)} className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#0A1F44] py-3 font-semibold text-white hover:bg-slate-800"><Camera className="h-4 w-4" /> Cargar Evidencia Final</button>}
+                  {viaje.status === "Conductor en camino" && <RRButton variant="dark" fullWidth onClick={() => onCambiarStatus(viaje.id, "Recolección en proceso", "Llegada al origen")}>✓ Confirmé llegada al origen</RRButton>}
+                  {viaje.status === "Recolección en proceso" && <RRButton variant="dark" fullWidth onClick={() => setEvidenceViaje(viaje)}><Camera className="h-4 w-4" /> Cargar Evidencia Inicial</RRButton>}
+                  {viaje.status === "Evidencia inicial pendiente" && <RRButton variant="dark" fullWidth onClick={() => onCambiarStatus(viaje.id, "Traslado en curso", "Traslado iniciado")}>🚗 Iniciar traslado</RRButton>}
+                  {viaje.status === "Traslado en curso" && <RRButton variant="dark" fullWidth onClick={() => onCambiarStatus(viaje.id, "Entrega en proceso", "Llegada al destino")}>✓ Llegué al destino</RRButton>}
+                  {viaje.status === "Entrega en proceso" && <RRButton variant="dark" fullWidth onClick={() => setEvidenceViaje(viaje)}><Camera className="h-4 w-4" /> Cargar Evidencia Final</RRButton>}
                 </div>
-              </div>
+              </RRCard>
             ))
           }
         </div>
@@ -904,26 +915,26 @@ function VijesView({ conductor, viajes, onAceptar, onCambiarStatus, cargando }: 
 
 // ─── GANANCIAS VIEW ───────────────────────────────────────────────────────────
 function GananciasView({ conductor, pagos, cargando }: { conductor: ConductorPerfil | null; pagos: PagoResumen[]; cargando: boolean }) {
-  const pagoEstilo: Record<string, string> = { Pagado: "text-[#00A846]", Pendiente: "text-[#FF6D00]", "En revisión": "text-[#1E88E5]", Rechazado: "text-red-600" }
+  const pagoEstilo: Record<string, string> = { Pagado: "text-rr-success", Pendiente: "text-rr-warning", "En revisión": "text-rr-primary", Rechazado: "text-rr-danger" }
   return (
-    <section className="fade-in p-5 pb-24">
-      <h2 className="mb-4 text-xl font-bold text-[#111827]">Mis ganancias</h2>
-      <div className="mb-6 rounded-xl bg-[#0A1F44] p-5 text-white shadow-lg">
-        <p className="mb-1 text-sm text-[#94A3B8]">Ganancias totales acumuladas</p>
-        {cargando ? <div className="h-9 w-32 animate-pulse bg-slate-700 rounded mb-4" /> : <h3 className="mb-4 text-3xl font-bold">${(conductor?.ganancias_total ?? 0).toLocaleString()}</h3>}
-        <div className="grid grid-cols-2 gap-2 border-t border-slate-700 pt-4 text-center">
-          <div><p className="text-xs text-[#94A3B8]">Viajes realizados</p><p className="text-sm font-semibold">{conductor?.viajes_realizados ?? 0}</p></div>
-          <div><p className="text-xs text-[#94A3B8]">Calificación</p><p className="text-sm font-semibold text-[#FF6D00]">★ {conductor?.calificacion?.toFixed(1) ?? "—"}</p></div>
+    <section className="rr-fade-in p-5 pb-24">
+      <h2 className="mb-4 text-xl font-bold text-rr-black">Mis ganancias</h2>
+      <RRCard className="mb-6 bg-rr-secondary p-5 text-white" elevated={false}>
+        <p className="mb-1 text-sm text-white/60">Ganancias totales acumuladas</p>
+        {cargando ? <div className="h-9 w-32 animate-pulse bg-white/10 rounded mb-4" /> : <h3 className="mb-4 text-3xl font-bold">{formatMoney(conductor?.ganancias_total ?? 0)}</h3>}
+        <div className="grid grid-cols-2 gap-2 border-t border-white/15 pt-4 text-center">
+          <div><p className="text-xs text-white/60">Viajes realizados</p><p className="text-sm font-semibold">{conductor?.viajes_realizados ?? 0}</p></div>
+          <div><p className="text-xs text-white/60">Calificación</p><p className="text-sm font-semibold text-rr-warning">★ {conductor?.calificacion?.toFixed(1) ?? "—"}</p></div>
         </div>
-      </div>
-      <h3 className="mb-3 text-sm font-bold text-slate-700">Historial de pagos</h3>
-      {cargando ? <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-16 animate-pulse bg-slate-100 rounded-xl" />)}</div>
-        : pagos.length === 0 ? <div className="rounded-xl border border-[#E5E7EB] bg-white p-8 text-center"><p className="text-sm text-[#94A3B8]">Sin registros de pago aún.</p></div>
+      </RRCard>
+      <h3 className="mb-3 text-sm font-bold text-rr-gray700">Historial de pagos</h3>
+      {cargando ? <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-16 animate-pulse bg-rr-gray100 rounded-rrLg" />)}</div>
+        : pagos.length === 0 ? <RRCard className="p-8 text-center"><p className="text-sm text-rr-gray500">Sin registros de pago aún.</p></RRCard>
         : <div className="space-y-3">{pagos.map(pago => (
-            <div key={pago.id} className="flex items-center justify-between rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
-              <div><p className="text-sm font-semibold text-[#111827]">{pago.periodo}</p><p className="text-xs text-[#6B7280]">{pago.viajes_revisados} viajes · {pago.fecha_pago ?? "Pendiente"}</p></div>
-              <div className="text-right"><p className="text-base font-bold text-[#111827]">${pago.deposito_esperado.toLocaleString()}</p><p className={`text-xs font-semibold ${pagoEstilo[pago.estatus] ?? "text-[#6B7280]"}`}>{pago.estatus}</p></div>
-            </div>
+            <RRCard key={pago.id} className="flex items-center justify-between p-4">
+              <div><p className="text-sm font-semibold text-rr-black">{pago.periodo}</p><p className="text-xs text-rr-gray500">{pago.viajes_revisados} viajes · {pago.fecha_pago ?? "Pendiente"}</p></div>
+              <div className="text-right"><p className="text-base font-bold text-rr-black">{formatMoney(pago.deposito_esperado)}</p><p className={`text-xs font-semibold ${pagoEstilo[pago.estatus] ?? "text-rr-gray500"}`}>{pago.estatus}</p></div>
+            </RRCard>
           ))}</div>
       }
     </section>
@@ -933,23 +944,23 @@ function GananciasView({ conductor, pagos, cargando }: { conductor: ConductorPer
 // ─── SETTINGS VIEW ────────────────────────────────────────────────────────────
 function SettingsView({ conductor, onBack }: { conductor: ConductorPerfil | null; onBack: () => void }) {
   return (
-    <section className="fade-in p-5 pb-24">
+    <section className="rr-fade-in p-5 pb-24">
       <div className="mb-5 flex items-center gap-3">
-        <button type="button" onClick={onBack} className="text-[#6B7280] hover:text-[#111827]">← Volver</button>
-        <h2 className="text-xl font-bold text-[#111827]">Mi perfil</h2>
+        <button type="button" onClick={onBack} className="text-rr-gray500 hover:text-rr-black">← Volver</button>
+        <h2 className="text-xl font-bold text-rr-black">Mi perfil</h2>
       </div>
       {conductor && (
-        <div className="mb-5 rounded-xl border border-[#E5E7EB] bg-white p-5 shadow-sm text-center">
-          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-[#1565FF] text-[#0A1F44] text-2xl font-bold">
+        <RRCard className="mb-5 p-5 text-center">
+          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-rr-primary text-rr-secondary text-2xl font-bold">
             {conductor.nombre[0]}{conductor.apellido[0]}
           </div>
-          <h3 className="text-lg font-bold text-[#111827]">{conductor.nombre} {conductor.apellido}</h3>
-          <p className="text-sm text-[#6B7280]">{conductor.telefono}</p>
+          <h3 className="text-lg font-bold text-rr-black">{conductor.nombre} {conductor.apellido}</h3>
+          <p className="text-sm text-rr-gray500">{conductor.telefono}</p>
           <div className="flex justify-center gap-4 mt-3">
-            <div className="text-center"><p className="text-lg font-bold text-[#111827]">{conductor.viajes_realizados}</p><p className="text-xs text-[#94A3B8]">Viajes</p></div>
-            <div className="text-center"><p className="text-lg font-bold text-[#FF6D00]">★ {conductor.calificacion.toFixed(1)}</p><p className="text-xs text-[#94A3B8]">Calificación</p></div>
+            <div className="text-center"><p className="text-lg font-bold text-rr-black">{conductor.viajes_realizados}</p><p className="text-xs text-rr-gray500">Viajes</p></div>
+            <div className="text-center"><p className="text-lg font-bold text-rr-warning">★ {conductor.calificacion.toFixed(1)}</p><p className="text-xs text-rr-gray500">Calificación</p></div>
           </div>
-        </div>
+        </RRCard>
       )}
       <div className="space-y-2">
         {[
@@ -957,11 +968,11 @@ function SettingsView({ conductor, onBack }: { conductor: ConductorPerfil | null
           { icon: Landmark, label: "Cuenta bancaria", sub: "CLABE y banco" },
           { icon: MapPin, label: "Mi ubicación", sub: "Municipio y estado" },
         ].map(item => (
-          <div key={item.label} className="flex items-center gap-3 rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600"><item.icon className="h-4 w-4" /></div>
-            <div className="flex-1"><p className="text-sm font-semibold text-[#111827]">{item.label}</p><p className="text-xs text-[#94A3B8]">{item.sub}</p></div>
-            <ChevronRight className="h-4 w-4 text-slate-300" />
-          </div>
+          <RRCard key={item.label} className="flex items-center gap-3 p-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-rrSm bg-rr-gray100 text-rr-gray700"><item.icon className="h-4 w-4" /></div>
+            <div className="flex-1"><p className="text-sm font-semibold text-rr-black">{item.label}</p><p className="text-xs text-rr-gray500">{item.sub}</p></div>
+            <ChevronRight className="h-4 w-4 text-rr-gray300" />
+          </RRCard>
         ))}
       </div>
     </section>
@@ -977,8 +988,15 @@ function EvidenceModal({ viaje, onClose, onSubmit }: {
   const [combustible, setCombustible] = useState("1/2")
   const [danos, setDanos] = useState("")
   const [enviando, setEnviando] = useState(false)
+  const [fotos, setFotos] = useState<Record<string, boolean>>({})
   const tipo = viaje.status === "Recolección en proceso" ? "inicial" : "final"
-  const slots = ["Frente","Lado piloto","Copiloto","Trasera","Tablero"]
+  const slots = [
+    { id: "front", label: "Frente" },
+    { id: "driver", label: "Lado piloto" },
+    { id: "passenger", label: "Copiloto" },
+    { id: "rear", label: "Trasera" },
+    { id: "dashboard", label: "Tablero" },
+  ]
 
   const handleSubmit = async () => {
     setEnviando(true)
@@ -988,52 +1006,44 @@ function EvidenceModal({ viaje, onClose, onSubmit }: {
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col bg-white">
-      <div className="flex items-center gap-3 border-b border-[#E5E7EB] p-4">
-        <button type="button" onClick={onClose}><X className="h-5 w-5 text-[#6B7280]" /></button>
-        <h3 className="font-bold text-[#111827]">Evidencia {tipo === "inicial" ? "Inicial" : "Final"} · {viaje.folio}</h3>
+      <div className="flex items-center gap-3 border-b border-rr-gray200 p-4">
+        <button type="button" onClick={onClose}><X className="h-5 w-5 text-rr-gray500" /></button>
+        <h3 className="font-bold text-rr-black">Evidencia {tipo === "inicial" ? "Inicial" : "Final"} · {viaje.folio}</h3>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        <RREvidenceGallery
+          items={slots.map(s => ({ ...s, completed: !!fotos[s.id] }))}
+          onSelect={id => setFotos(f => ({ ...f, [id]: !f[id] }))}
+        />
         <div>
-          <p className="text-xs font-bold text-[#6B7280] uppercase mb-2">📷 Fotografías (5 ángulos)</p>
-          <div className="grid grid-cols-5 gap-2">
-            {slots.map(slot => (
-              <div key={slot} className="aspect-square rounded-lg border-2 border-dashed border-slate-300 bg-[#F8FAFC] flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100">
-                <Camera className="h-5 w-5 text-slate-300 mb-1" />
-                <p className="text-[9px] text-[#94A3B8] text-center leading-tight">{slot}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[#6B7280] mb-1">Kilometraje {tipo === "inicial" ? "inicial" : "final"}</label>
+          <label className="block text-xs font-medium text-rr-gray500 mb-1">Kilometraje {tipo === "inicial" ? "inicial" : "final"}</label>
           <input type="number" value={km} onChange={e => setKm(e.target.value)} placeholder="45820"
-            className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1565FF]" />
+            className="w-full border border-rr-gray300 rounded-rrMd px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rr-primary" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#6B7280] mb-1">Nivel de combustible</label>
+          <label className="block text-xs font-medium text-rr-gray500 mb-1">Nivel de combustible</label>
           <div className="grid grid-cols-5 gap-2">
             {["Vacío","1/4","1/2","3/4","Lleno"].map(n => (
               <button key={n} type="button" onClick={() => setCombustible(n)}
-                className={cx("py-2 rounded-lg text-xs font-semibold border transition-colors",
-                  combustible === n ? "bg-[#1565FF] text-[#0A1F44] border-[#1565FF]" : "bg-white text-slate-600 border-slate-300")}>
+                className={cx("py-2 rounded-rrSm text-xs font-semibold border transition-colors",
+                  combustible === n ? "bg-rr-primary text-white border-rr-primary" : "bg-white text-rr-gray700 border-rr-gray300")}>
                 {n}
               </button>
             ))}
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-[#6B7280] mb-1">Daños visibles</label>
+          <label className="block text-xs font-medium text-rr-gray500 mb-1">Daños visibles</label>
           <textarea value={danos} onChange={e => setDanos(e.target.value)}
             placeholder="Sin daños. / Describir cualquier daño preexistente..." rows={3}
-            className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1565FF]" />
+            className="w-full border border-rr-gray300 rounded-rrMd px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rr-primary" />
         </div>
       </div>
-      <div className="border-t border-[#E5E7EB] p-4">
-        <button type="button" onClick={handleSubmit} disabled={enviando}
-          className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#1565FF] py-4 font-bold text-[#0A1F44] hover:brightness-95 disabled:opacity-60">
+      <div className="border-t border-rr-gray200 p-4">
+        <RRButton fullWidth onClick={handleSubmit} disabled={enviando}>
           {enviando ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
           {enviando ? "Guardando..." : `Confirmar evidencia ${tipo}`}
-        </button>
+        </RRButton>
       </div>
     </div>
   );
@@ -1042,14 +1052,14 @@ function EvidenceModal({ viaje, onClose, onSubmit }: {
 // ─── BOTTOM NAV ───────────────────────────────────────────────────────────────
 function BottomNavigation({ activeView, onChange }: { activeView: View; onChange: (v: View) => void }) {
   return (
-    <nav className="flex flex-shrink-0 border-t border-[#E5E7EB] bg-white">
+    <nav className="flex flex-shrink-0 border-t border-rr-gray200 bg-white">
       {navItems.map(({ id, label, icon: Icon }) => {
         const active = activeView === id;
         return (
           <button key={id} type="button" onClick={() => onChange(id)}
-            className={cx("flex flex-1 flex-col items-center gap-1 py-2 text-xs font-medium transition-colors",
-              active ? "text-[#1565FF]" : "text-[#6B7280] hover:text-slate-700")}>
-            <Icon className={cx("h-5 w-5", active && "fill-blue-100")} />
+            className={cx("flex flex-1 flex-col items-center gap-1 py-2 text-xs font-bold transition-colors",
+              active ? "text-rr-primary" : "text-rr-gray500 hover:text-rr-black")}>
+            <Icon className="h-5 w-5" />
             {label}
           </button>
         );

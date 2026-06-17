@@ -6,8 +6,16 @@
   --rr-primary: #1565ff;
   --rr-primary-dark: #0a1f44;
   --rr-primary-deep: #06152f;
+  --rr-primary-hover: #0d47e6;
+  --rr-primary-light: #edf4ff;
+  --rr-secondary: #0a1f44;
+  --rr-secondary-light: #132c5a;
   --rr-success: #00c853;
+  --rr-success-light: #e8fff2;
   --rr-warning: #ff6d00;
+  --rr-warning-light: #fff2e8;
+  --rr-danger: #e53935;
+  --rr-danger-light: #ffecec;
   --rr-bg: #f8fafc;
   --rr-surface: #ffffff;
   --rr-text: #111827;
@@ -40,7 +48,8 @@ select {
   font: inherit;
 }
 
-.rr-mobile-shell {
+.rr-mobile-shell,
+.mobile-mockup {
   width: min(100%, 430px);
   min-height: 100vh;
   margin: 0 auto;
@@ -50,7 +59,8 @@ select {
 }
 
 @media (min-width: 520px) {
-  .rr-mobile-shell {
+  .rr-mobile-shell,
+  .mobile-mockup {
     min-height: 900px;
     height: 900px;
     margin-top: 28px;
@@ -58,6 +68,34 @@ select {
     border-radius: 44px;
     border: 10px solid rgba(255, 255, 255, 0.16);
     box-shadow: 0 34px 90px rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* ── Design System Técnico RR ── */
+.rr-app-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(21, 101, 255, .12), transparent 24rem),
+    linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 100%);
+}
+
+.rr-safe-bottom {
+  padding-bottom: calc(88px + env(safe-area-inset-bottom));
+}
+
+.rr-fade-in {
+  animation: rrFadeIn 220ms ease-out both;
+}
+
+@keyframes rrFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
