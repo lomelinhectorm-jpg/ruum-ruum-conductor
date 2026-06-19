@@ -426,7 +426,9 @@ function StepLogin({ onBack, onNext }: { onBack: () => void; onNext: () => void 
 
   const handleForgot = async () => {
     if (!form.email) { setError("Ingresa tu correo primero"); return }
-    await sb.auth.resetPasswordForEmail(form.email)
+    await sb.auth.resetPasswordForEmail(form.email, {
+      redirectTo: `${window.location.origin}/recuperar-password`,
+    })
     setForgotSent(true)
   }
 
