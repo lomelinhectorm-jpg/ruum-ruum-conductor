@@ -40,6 +40,7 @@ interface ConductorPerfil {
   calificacion: number
   viajes_realizados: number
   ganancias_total: number
+  certificacion?: string
 }
 
 interface ViajeDB {
@@ -476,7 +477,19 @@ function StepLogin({ onBack, onNext }: { onBack: () => void; onNext: () => void 
 }
 
 // ─── ONBOARDING: DOCUMENTOS ──────────────────────────────────────────────────
-function StepDocumentos({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
+interface DocsConductorData {
+  licTipo: string
+  licNumero: string
+  licVigencia: string
+  licFrente: DocFile
+  licReverso: DocFile
+  ineNumero: string
+  ineVigencia: string
+  ineFrente: DocFile
+  domicilio: DocFile
+}
+
+function StepDocumentos({ onBack, onNext }: { onBack: () => void; onNext: (data: DocsConductorData) => void }) {
   const [licTipo, setLicTipo] = useState("")
   const [licNumero, setLicNumero] = useState("")
   const [licVigencia, setLicVigencia] = useState("")
@@ -590,7 +603,7 @@ function StepDocumentos({ onBack, onNext }: { onBack: () => void; onNext: () => 
         )}
       </div>
       <div className="p-6 border-t border-slate-100">
-        <button onClick={() => { if (validate()) onNext() }}
+        <button onClick={() => { if (validate()) onNext({ licTipo, licNumero, licVigencia, licFrente, licReverso, ineNumero, ineVigencia, ineFrente, domicilio }) }}
           className="w-full bg-[#FFC400] text-[#14141A] font-bold py-4 rounded-2xl text-base hover:brightness-95 transition-all active:scale-95 flex items-center justify-center gap-2">
           Continuar <ChevronRight className="w-5 h-5" />
         </button>
@@ -1092,19 +1105,57 @@ export default function DriverApp() {
   } | null>(null)
   const [legalLoading, setLegalLoading] = useState(false)
   const [conductorAuthId, setConductorAuthId] = useState<string | null>(null)
+  const [docsConductorData, setDocsConductorData] = useState<DocsConductorData | null>(null)
+  const [sesionLista, setSesionLista] = useState(false)
 
   // ── CARGAR CONDUCTOR ──
+  // Importante: solo carga por auth_id real. El fallback anterior (tomar
+  // cualquier conductor con certificacion="Activo") podía mostrarle a un
+  // conductor el panel de otro, o dejarlo sin panel si su cuenta seguía
+  // "Pendiente de validación". RLS ya protege los datos por auth.uid(),
+  // pero identificar al conductor correcto es responsabilidad del cliente.
   const cargarConductor = useCallback(async () => {
-    const authId = conductorAuthId
-    const query = sb.from("conductores")
-      .select("id, nombre, apellido, telefono, disponibilidad, calificacion, viajes_realizados, ganancias_total")
+    if (!conductorAuthId) { setConductor(null); return }
+    const { data } = await sb.from("conductores")
+      .select("id, nombre, apellido, telefono, disponibilidad, calificacion, viajes_realizados, ganancias_total, certificacion")
+      .eq("auth_id", conductorAuthId)
+      .maybeSingle()
 
-    const { data } = authId
-      ? await query.eq("auth_id", authId).single()
-      : await query.eq("certificacion", "Activo").limit(1).single()
-
-    if (data) setConductor(data as ConductorPerfil)
+    setConductor(data as ConductorPerfil | null)
   }, [conductorAuthId])
+
+  // ── SESIÓN: detectar sesión persistida real al cargar la app ──
+  useEffect(() => {
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setConductorAuthId(session.user.id)
+        setOnboardingDone(true)
+        localStorage.setItem("ruum_conductor_onboarding", "1")
+      } else {
+        setConductorAuthId(null)
+        setOnboardingDone(false)
+        localStorage.removeItem("ruum_conductor_onboarding")
+      }
+      setSesionLista(true)
+    })
+
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setConductorAuthId(session.user.id)
+        setOnboardingDone(true)
+        localStorage.setItem("ruum_conductor_onboarding", "1")
+      } else {
+        setConductorAuthId(null)
+        setConductor(null)
+        setViajes([])
+        setPagos([])
+        setOnboardingDone(false)
+        localStorage.removeItem("ruum_conductor_onboarding")
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
 
   const cargarViajes = useCallback(async () => {
     if (!conductor) return
@@ -1176,16 +1227,7 @@ export default function DriverApp() {
     if (!registerData) return
     setLegalLoading(true)
     try {
-      const { data: authData, error: authError } = await sb.auth.signUp({
-        email: registerData.email,
-        password: registerData.password,
-      })
-      if (authError) throw authError
-      const authId = authData.user?.id
-      if (!authId) throw new Error("No se pudo crear el usuario")
-
-      await sb.from("conductores").insert({
-        auth_id:           authId,
+      const perfilConductor = {
         nombre:            registerData.nombre,
         apellido:          registerData.apellido,
         telefono:          registerData.telefono,
@@ -1200,12 +1242,38 @@ export default function DriverApp() {
         cuenta_banco:      registerData.banco?.toUpperCase() || null,
         cuenta_clabe:      registerData.clabe || null,
         cuenta_titular:    registerData.titular?.toUpperCase() || null,
-        disponibilidad:    "No disponible",
-        certificacion:     "Pendiente de validación",
-        calificacion:      0,
-      })
+      }
 
-      setConductorAuthId(authId)
+      const formData = new FormData()
+      formData.append("password", registerData.password)
+      formData.append("perfilConductor", JSON.stringify(perfilConductor))
+      if (docsConductorData) {
+        formData.append("licTipo", docsConductorData.licTipo)
+        formData.append("licNumero", docsConductorData.licNumero)
+        formData.append("licVigencia", docsConductorData.licVigencia)
+        if (docsConductorData.licFrente) formData.append("licFrente", docsConductorData.licFrente.file)
+        if (docsConductorData.licReverso) formData.append("licReverso", docsConductorData.licReverso.file)
+        formData.append("ineNumero", docsConductorData.ineNumero)
+        formData.append("ineVigencia", docsConductorData.ineVigencia)
+        if (docsConductorData.ineFrente) formData.append("ineFrente", docsConductorData.ineFrente.file)
+        if (docsConductorData.domicilio) formData.append("domicilio", docsConductorData.domicilio.file)
+      }
+
+      const registro = await fetch("/api/registro-conductor", { method: "POST", body: formData })
+      if (!registro.ok) {
+        const data = await registro.json().catch(() => null) as { error?: string } | null
+        throw new Error(data?.error ?? "No se pudo crear la cuenta.")
+      }
+
+      const { error: loginError } = await sb.auth.signInWithPassword({
+        email: registerData.email,
+        password: registerData.password,
+      })
+      if (loginError) throw loginError
+
+      // El listener onAuthStateChange ya se encarga de fijar conductorAuthId
+      // y onboardingDone, pero los fijamos aquí también para una transición
+      // inmediata sin esperar el round-trip async del listener.
       localStorage.setItem("ruum_conductor_onboarding", "1")
       setOnboardingDone(true)
     } catch (e) {
@@ -1217,6 +1285,16 @@ export default function DriverApp() {
   }
 
   // ── ONBOARDING GATE ──
+  if (!sesionLista) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-0 md:p-4">
+        <div className="mobile-mockup flex items-center justify-center">
+          <Loader className="w-6 h-6 animate-spin text-[#94A3B8]" />
+        </div>
+      </div>
+    )
+  }
+
   if (!onboardingDone) {
     return (
       <div className="flex min-h-screen items-center justify-center p-0 md:p-4">
@@ -1245,7 +1323,7 @@ export default function DriverApp() {
           {onboardingStep === "documents" && (
             <StepDocumentos
               onBack={() => setOnboardingStep("register")}
-              onNext={() => setOnboardingStep("legal")}
+              onNext={data => { setDocsConductorData(data); setOnboardingStep("legal") }}
             />
           )}
           {onboardingStep === "legal" && (
