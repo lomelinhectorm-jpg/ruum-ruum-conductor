@@ -1,26 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --rr-primary: #1565ff;
-  --rr-primary-dark: #0a1f44;
-  --rr-primary-deep: #06152f;
-  --rr-primary-hover: #0d47e6;
-  --rr-primary-light: #edf4ff;
-  --rr-secondary: #0a1f44;
-  --rr-secondary-light: #132c5a;
-  --rr-success: #00c853;
-  --rr-success-light: #e8fff2;
-  --rr-warning: #ff6d00;
-  --rr-warning-light: #fff2e8;
-  --rr-danger: #e53935;
-  --rr-danger-light: #ffecec;
-  --rr-bg: #f8fafc;
+  --rr-primary: #ffc400;
+  --rr-primary-dark: #14141a;
+  --rr-primary-deep: #0f1015;
+  --rr-primary-hover: #e0a800;
+  --rr-primary-light: #fff4cc;
+  --rr-secondary: #14141a;
+  --rr-secondary-light: #1e1f28;
+  --rr-trace: #3d7bff;
+  --rr-trace-light: #e8efff;
+  --rr-trace-deep: #1a3d8f;
+  --rr-success: #1fae63;
+  --rr-success-light: #e5f8ed;
+  --rr-warning: #ffc400;
+  --rr-warning-light: #fff4cc;
+  --rr-danger: #e0334e;
+  --rr-danger-light: #fce8eb;
+  --rr-bg: #f7f6f2;
   --rr-surface: #ffffff;
-  --rr-text: #111827;
+  --rr-text: #14141a;
   --rr-muted: #6b7280;
-  --rr-border: #e5e7eb;
+  --rr-border: #eae7dd;
 }
 
 * {
@@ -35,10 +40,19 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(21, 101, 255, 0.20), transparent 32rem),
-    linear-gradient(135deg, #071a38 0%, #0a1f44 45%, #031020 100%);
+    radial-gradient(circle at top left, rgba(255, 196, 0, 0.18), transparent 32rem),
+    linear-gradient(135deg, #14141a 0%, #1e1f28 52%, #0f1015 100%);
   color: var(--rr-text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+h1, h2, h3, .font-display {
+  font-family: "Space Grotesk", Inter, sans-serif;
+  letter-spacing: 0;
+}
+
+.font-mono, code, kbd {
+  font-family: "JetBrains Mono", monospace;
 }
 
 button,
@@ -53,7 +67,7 @@ select {
   width: min(100%, 430px);
   min-height: 100vh;
   margin: 0 auto;
-  background: #f8fafc;
+  background: #f7f6f2;
   position: relative;
   overflow: hidden;
 }
@@ -75,8 +89,8 @@ select {
 .rr-app-shell {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top right, rgba(21, 101, 255, .12), transparent 24rem),
-    linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 100%);
+    radial-gradient(circle at top right, rgba(255, 196, 0, .14), transparent 24rem),
+    linear-gradient(180deg, #F7F6F2 0%, #FFFFFF 100%);
 }
 
 .rr-safe-bottom {
@@ -108,8 +122,8 @@ select {
 
 .rr-gradient-card {
   background:
-    radial-gradient(circle at 90% 0%, rgba(21, 101, 255, 0.58), transparent 18rem),
-    linear-gradient(135deg, #071a38 0%, #0a1f44 60%, #06152f 100%);
+    radial-gradient(circle at 90% 0%, rgba(255, 196, 0, 0.18), transparent 18rem),
+    linear-gradient(135deg, #14141a 0%, #1e1f28 60%, #0f1015 100%);
 }
 
 .rr-card {
@@ -129,16 +143,16 @@ select {
 
 .rr-btn-primary {
   border-radius: 18px;
-  background: linear-gradient(135deg, #1565ff 0%, #004de6 100%);
-  color: #fff;
+  background: linear-gradient(135deg, #ffc400 0%, #e0a800 100%);
+  color: #14141a;
   font-weight: 800;
-  box-shadow: 0 12px 26px rgba(21, 101, 255, 0.30);
+  box-shadow: 0 12px 26px rgba(255, 196, 0, 0.28);
   transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
 }
 
 .rr-btn-primary:active {
   transform: scale(0.98);
-  box-shadow: 0 8px 18px rgba(21, 101, 255, 0.25);
+  box-shadow: 0 8px 18px rgba(255, 196, 0, 0.24);
 }
 
 .rr-status-dot {

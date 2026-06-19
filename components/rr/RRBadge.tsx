@@ -11,7 +11,7 @@ interface RRBadgeProps {
 
 const variants: Record<RRBadgeVariant, string> = {
   success: "bg-rr-successLight text-rr-success",
-  process: "bg-rr-primaryLight text-rr-primary",
+  process: "bg-rr-traceLight text-rr-traceDeep",
   pending: "bg-rr-warningLight text-rr-warning",
   danger: "bg-rr-dangerLight text-rr-danger",
   neutral: "bg-rr-gray100 text-rr-gray700",
@@ -19,7 +19,7 @@ const variants: Record<RRBadgeVariant, string> = {
 
 const dots: Record<RRBadgeVariant, string> = {
   success: "bg-rr-success",
-  process: "bg-rr-primary",
+  process: "bg-rr-trace",
   pending: "bg-rr-warning",
   danger: "bg-rr-danger",
   neutral: "bg-rr-gray500",

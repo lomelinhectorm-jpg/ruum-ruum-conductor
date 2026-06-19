@@ -9,10 +9,10 @@ interface RRButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<RRButtonVariant, string> = {
-  primary: "bg-rr-primary text-white hover:bg-rr-primaryHover shadow-rrCard",
+  primary: "bg-rr-primary text-rr-secondary hover:bg-rr-primaryHover shadow-rrCard",
   secondary: "bg-white text-rr-black border border-rr-gray200 hover:bg-rr-gray100",
   success: "bg-rr-success text-white hover:brightness-95 shadow-rrCard",
-  warning: "bg-rr-warning text-white hover:brightness-95 shadow-rrCard",
+  warning: "bg-rr-warning text-rr-secondary hover:brightness-95 shadow-rrCard",
   danger: "bg-rr-danger text-white hover:brightness-95 shadow-rrCard",
   dark: "bg-rr-secondary text-white hover:bg-rr-secondaryLight shadow-rrCard",
 };

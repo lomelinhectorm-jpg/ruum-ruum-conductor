@@ -26,7 +26,7 @@ export function RRBottomNav<T extends string>({ active, items, onChange }: RRBot
               onClick={() => onChange(id)}
               className={cn(
                 "flex min-w-16 flex-col items-center gap-1 rounded-rrMd px-3 py-2 text-xs font-bold transition",
-                isActive ? "bg-rr-primaryLight text-rr-primary" : "text-rr-gray500 hover:text-rr-black"
+                isActive ? "bg-rr-primaryLight text-rr-secondary" : "text-rr-gray500 hover:text-rr-black"
               )}
             >
               <Icon className="h-5 w-5" />

@@ -154,7 +154,7 @@ function UploadBox({ label, accept = "image/*,.pdf", value, onChange, error }: {
 // ─── ONBOARDING: BIENVENIDA ──────────────────────────────────────────────────
 function StepWelcome({ onRegister, onLogin }: { onRegister: () => void; onLogin: () => void }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0A1F44] via-[#0B2B5F] to-[#031225] flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-[#14141A] via-[#1E1F28] to-[#0F1015] flex flex-col">
       <div className="flex-1 flex flex-col items-center justify-center px-8 text-center py-12">
         <div className="w-24 h-24 bg-white/10 rounded-3xl flex items-center justify-center mb-6 shadow-2xl">
           <span className="text-5xl">🚘</span>
@@ -186,11 +186,11 @@ function StepWelcome({ onRegister, onLogin }: { onRegister: () => void; onLogin:
       </div>
       <div className="px-8 pb-12 space-y-3">
         <button onClick={onRegister}
-          className="w-full bg-[#1565FF] text-[#0A1F44] font-bold py-4 rounded-2xl text-base shadow-xl hover:brightness-95 transition-all active:scale-95">
+          className="w-full bg-[#FFC400] text-[#14141A] font-bold py-4 rounded-2xl text-base shadow-xl hover:brightness-95 transition-all active:scale-95">
           Registrarme como conductor
         </button>
         <button onClick={onLogin}
-          className="w-full border-2 border-[#1565FF]/50 text-[#1565FF] font-semibold py-4 rounded-2xl text-base hover:bg-white/5 transition-all active:scale-95">
+          className="w-full border-2 border-[#FFC400]/50 text-[#FFC400] font-semibold py-4 rounded-2xl text-base hover:bg-white/5 transition-all active:scale-95">
           Ya tengo cuenta
         </button>
       </div>
@@ -239,8 +239,8 @@ function StepRegister({ onBack, onNext }: {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <div className="bg-[#0A1F44] px-6 pt-12 pb-6">
-        <button onClick={onBack} className="text-[#FFFFFF]/60 text-sm mb-4 flex items-center gap-1 hover:text-[#1565FF]">← Regresar</button>
+      <div className="bg-[#14141A] px-6 pt-12 pb-6">
+        <button onClick={onBack} className="text-[#FFFFFF]/60 text-sm mb-4 flex items-center gap-1 hover:text-[#FFC400]">← Regresar</button>
         <h2 className="text-2xl font-black text-white">Crear cuenta</h2>
         <p className="text-white/50 text-sm mt-1">Empieza tu registro como conductor</p>
       </div>
@@ -397,7 +397,7 @@ function StepRegister({ onBack, onNext }: {
 
       <div className="p-6 border-t border-slate-100">
         <button onClick={() => { if (validate()) onNext(form) }}
-          className="w-full bg-[#1565FF] text-[#0A1F44] font-bold py-4 rounded-2xl text-base hover:brightness-95 transition-all active:scale-95 flex items-center justify-center gap-2">
+          className="w-full bg-[#FFC400] text-[#14141A] font-bold py-4 rounded-2xl text-base hover:brightness-95 transition-all active:scale-95 flex items-center justify-center gap-2">
           Continuar <ChevronRight className="w-5 h-5" />
         </button>
       </div>
@@ -432,8 +432,8 @@ function StepLogin({ onBack, onNext }: { onBack: () => void; onNext: () => void 
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <div className="bg-[#0A1F44] px-6 pt-12 pb-6">
-        <button onClick={onBack} className="text-[#FFFFFF]/60 text-sm mb-4 flex items-center gap-1 hover:text-[#1565FF]">← Regresar</button>
+      <div className="bg-[#14141A] px-6 pt-12 pb-6">
+        <button onClick={onBack} className="text-[#FFFFFF]/60 text-sm mb-4 flex items-center gap-1 hover:text-[#FFC400]">← Regresar</button>
         <h2 className="text-2xl font-black text-white">Iniciar sesión</h2>
         <p className="text-white/50 text-sm mt-1">Bienvenido de nuevo</p>
       </div>
@@ -458,14 +458,14 @@ function StepLogin({ onBack, onNext }: { onBack: () => void; onNext: () => void 
         {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
         {forgotSent
           ? <p className="text-xs text-[#00A846] font-medium">✓ Te enviamos un correo para restablecer tu contraseña</p>
-          : <button onClick={handleForgot} className="text-sm text-[#0A1F44] font-semibold hover:underline">
+          : <button onClick={handleForgot} className="text-sm text-[#14141A] font-semibold hover:underline">
               ¿Olvidaste tu contraseña?
             </button>
         }
       </div>
       <div className="p-6 border-t border-slate-100">
         <button onClick={handleLogin} disabled={loading}
-          className="w-full bg-[#0A1F44] text-[#FFFFFF] font-bold py-4 rounded-2xl text-base hover:bg-[#2a2a2a] disabled:opacity-60 transition-all active:scale-95">
+          className="w-full bg-[#14141A] text-[#FFFFFF] font-bold py-4 rounded-2xl text-base hover:bg-[#2a2a2a] disabled:opacity-60 transition-all active:scale-95">
           {loading ? "Verificando..." : "Entrar"}
         </button>
       </div>
@@ -503,8 +503,8 @@ function StepDocumentos({ onBack, onNext }: { onBack: () => void; onNext: () => 
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <div className="bg-[#0A1F44] px-6 pt-12 pb-6">
-        <button onClick={onBack} className="text-[#FFFFFF]/60 text-sm mb-4 flex items-center gap-1 hover:text-[#1565FF]">← Regresar</button>
+      <div className="bg-[#14141A] px-6 pt-12 pb-6">
+        <button onClick={onBack} className="text-[#FFFFFF]/60 text-sm mb-4 flex items-center gap-1 hover:text-[#FFC400]">← Regresar</button>
         <h2 className="text-2xl font-black text-white">Tus documentos</h2>
         <p className="text-white/50 text-sm mt-1">Los revisaremos en menos de 24 horas</p>
       </div>
@@ -589,7 +589,7 @@ function StepDocumentos({ onBack, onNext }: { onBack: () => void; onNext: () => 
       </div>
       <div className="p-6 border-t border-slate-100">
         <button onClick={() => { if (validate()) onNext() }}
-          className="w-full bg-[#1565FF] text-[#0A1F44] font-bold py-4 rounded-2xl text-base hover:brightness-95 transition-all active:scale-95 flex items-center justify-center gap-2">
+          className="w-full bg-[#FFC400] text-[#14141A] font-bold py-4 rounded-2xl text-base hover:brightness-95 transition-all active:scale-95 flex items-center justify-center gap-2">
           Continuar <ChevronRight className="w-5 h-5" />
         </button>
       </div>
@@ -611,8 +611,8 @@ function StepLegal({ onBack, onAccept, loading }: { onBack: () => void; onAccept
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <div className="bg-[#0A1F44] px-6 pt-12 pb-6">
-        <button onClick={onBack} className="text-[#FFFFFF]/60 text-sm mb-4 flex items-center gap-1 hover:text-[#1565FF]">← Regresar</button>
+      <div className="bg-[#14141A] px-6 pt-12 pb-6">
+        <button onClick={onBack} className="text-[#FFFFFF]/60 text-sm mb-4 flex items-center gap-1 hover:text-[#FFC400]">← Regresar</button>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
             <Shield className="w-5 h-5 text-white" />
@@ -1026,7 +1026,7 @@ function EvidenceModal({ viaje, onClose, onSubmit }: {
             {["Vacío","1/4","1/2","3/4","Lleno"].map(n => (
               <button key={n} type="button" onClick={() => setCombustible(n)}
                 className={cx("py-2 rounded-rrSm text-xs font-semibold border transition-colors",
-                  combustible === n ? "bg-rr-primary text-white border-rr-primary" : "bg-white text-rr-gray700 border-rr-gray300")}>
+                  combustible === n ? "bg-rr-primary text-rr-secondary border-rr-primary" : "bg-white text-rr-gray700 border-rr-gray300")}>
                 {n}
               </button>
             ))}

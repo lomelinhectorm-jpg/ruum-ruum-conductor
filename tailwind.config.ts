@@ -11,31 +11,34 @@ const config: Config = {
       colors: {
         rr: {
           // Paleta legacy (compatibilidad con clases existentes)
-          blue: "#1565FF",
-          navy: "#0A1F44",
-          green: "#00C853",
-          orange: "#FF6D00",
-          bg: "#F8FAFC",
-          text: "#111827",
+          blue: "#3D7BFF",
+          navy: "#14141A",
+          green: "#1FAE63",
+          orange: "#FFC400",
+          bg: "#F7F6F2",
+          text: "#14141A",
           muted: "#6B7280",
           // Paleta del Design System Técnico (componentes RR)
-          primary: "#1565FF",
-          primaryHover: "#0D47E6",
-          primaryLight: "#EDF4FF",
-          secondary: "#0A1F44",
-          secondaryLight: "#132C5A",
-          success: "#00C853",
-          successLight: "#E8FFF2",
-          warning: "#FF6D00",
-          warningLight: "#FFF2E8",
-          danger: "#E53935",
-          dangerLight: "#FFECEC",
-          black: "#111827",
+          primary: "#FFC400",
+          primaryHover: "#E0A800",
+          primaryLight: "#FFF4CC",
+          secondary: "#14141A",
+          secondaryLight: "#1E1F28",
+          trace: "#3D7BFF",
+          traceLight: "#E8EFFF",
+          traceDeep: "#1A3D8F",
+          success: "#1FAE63",
+          successLight: "#E5F8ED",
+          warning: "#FFC400",
+          warningLight: "#FFF4CC",
+          danger: "#E0334E",
+          dangerLight: "#FCE8EB",
+          black: "#14141A",
           gray700: "#374151",
           gray500: "#6B7280",
-          gray300: "#D1D5DB",
-          gray200: "#E5E7EB",
-          gray100: "#F3F4F6",
+          gray300: "#D8D5CC",
+          gray200: "#EAE7DD",
+          gray100: "#F4F2EC",
           white: "#FFFFFF"
         }
       },
@@ -48,13 +51,15 @@ const config: Config = {
       },
       boxShadow: {
         rr: "0 14px 40px rgba(15, 23, 42, 0.08)",
-        "rr-blue": "0 12px 26px rgba(21, 101, 255, 0.30)",
-        rrCard: "0 10px 30px rgba(21,101,255,.08)",
-        rrFloating: "0 20px 60px rgba(0,0,0,.12)",
+        "rr-blue": "0 12px 26px rgba(255, 196, 0, 0.28)",
+        rrCard: "0 10px 30px rgba(20,20,26,.08)",
+        rrFloating: "0 20px 60px rgba(20,20,26,.14)",
         rrModal: "0 30px 80px rgba(0,0,0,.18)"
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"]
+        sans: ["Inter", "system-ui", "sans-serif"],
+        display: ["Space Grotesk", "Inter", "sans-serif"],
+        mono: ["JetBrains Mono", "monospace"]
       }
     }
   },
