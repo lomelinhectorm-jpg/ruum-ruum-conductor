@@ -1,7 +1,5 @@
 // lib/queries/conductor.ts — conductor-ruum
 
-// lib/queries/conductor.ts — conductor-ruum
-
 import { supabase } from '@/lib/supabase'
 
 // ── AUTH ────────────────────────────────────────────────────
@@ -112,12 +110,17 @@ export async function aceptarViaje(viajeId: string, conductorNombre: string) {
 // de estatus no deben hacer. Mezclar ese caso especial dentro de la
 // función genérica lo esconde; mejor una función dedicada.
 export async function rechazarViaje(viajeId: string, conductorNombre: string) {
-  const { data, error } = await supabase
+  // No se encadena .select().single(): al limpiar conductor_id en este
+  // mismo update, la fila deja de cumplir la política RLS
+  // conductor_select_viajes (conductor_id = mi_conductor_id()), así que
+  // el RETURNING vendría vacío bajo RLS aunque el UPDATE sí se aplique
+  // — y .single() lanzaría un error de "0 filas" sobre una operación
+  // que en realidad sí tuvo éxito. Nada en el código consume el valor
+  // de retorno de esta función, así que no hay costo en omitirlo.
+  const { error } = await supabase
     .from('viajes')
     .update({ status: 'Pendiente de asignación', conductor_id: null })
     .eq('id', viajeId)
-    .select()
-    .single()
 
   if (error) throw error
 
@@ -127,8 +130,6 @@ export async function rechazarViaje(viajeId: string, conductorNombre: string) {
     actor: conductorNombre,
     actor_tipo: 'conductor',
   })
-
-  return data
 }
 
 export async function cambiarStatusViaje(

@@ -1209,8 +1209,13 @@ export default function DriverApp() {
 
   const handleRechazarViaje = async (viajeId: string) => {
     const nombre = conductor ? `${conductor.nombre} ${conductor.apellido}` : "Conductor"
-    await rechazarViaje(viajeId, nombre)
-    await cargarViajes()
+    try {
+      await rechazarViaje(viajeId, nombre)
+      await cargarViajes()
+    } catch (e) {
+      console.error("Error rechazando viaje:", e)
+      alert("No se pudo rechazar el viaje. Intenta de nuevo.")
+    }
   }
 
   const handleCambiarStatus = async (viajeId: string, status: string, evento: string) => {
