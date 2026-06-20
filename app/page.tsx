@@ -908,7 +908,7 @@ function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, 
         </div>
       )}
       {evidenceViaje && (
-        <EvidenceModal viaje={evidenceViaje} onClose={() => setEvidenceViaje(null)}
+        <EvidenceModal viaje={evidenceViaje} conductorId={conductor?.id ?? ""} onClose={() => setEvidenceViaje(null)}
           onSubmit={async (datos) => {
             if (!conductor) return
             const tipo = evidenceViaje.status === "Recolección en proceso" ? "inicial" : "final"
@@ -923,6 +923,7 @@ function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, 
               combustible_final: tipo === "final" ? datos.combustible : undefined,
               danos_iniciales: tipo === "inicial" ? datos.danos : undefined,
               danos_finales: tipo === "final" ? datos.danos : undefined,
+              fotos: datos.fotos,
               tipo,
               })
             } catch (error) {
@@ -1007,41 +1008,95 @@ function SettingsView({ conductor, onBack }: { conductor: ConductorPerfil | null
 }
 
 // ─── EVIDENCE MODAL ───────────────────────────────────────────────────────────
-function EvidenceModal({ viaje, onClose, onSubmit }: {
-  viaje: ViajeDB; onClose: () => void
-  onSubmit: (datos: { km: number; combustible: string; danos: string }) => Promise<void>
+function EvidenceModal({ viaje, conductorId, onClose, onSubmit }: {
+  viaje: ViajeDB; conductorId: string; onClose: () => void
+  onSubmit: (datos: { km: number; combustible: string; danos: string; fotos: Record<string, string> }) => Promise<void>
 }) {
   const [km, setKm] = useState("")
   const [combustible, setCombustible] = useState("1/2")
   const [danos, setDanos] = useState("")
   const [enviando, setEnviando] = useState(false)
-  const [fotos, setFotos] = useState<Record<string, boolean>>({})
+  const [errorFotos, setErrorFotos] = useState("")
+  // previews: blob URL local para mostrar de inmediato. paths: ubicación
+  // real en el bucket una vez subida — eso es lo que se manda al RPC.
+  const [previews, setPreviews] = useState<Record<string, string>>({})
+  const [paths, setPaths] = useState<Record<string, string>>({})
+  const [subiendo, setSubiendo] = useState<Record<string, boolean>>({})
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const slotActivoRef = useRef<string | null>(null)
+
   const tipo = viaje.status === "Recolección en proceso" ? "inicial" : "final"
-  const slots = [
-    { id: "front", label: "Frente" },
-    { id: "driver", label: "Lado piloto" },
-    { id: "passenger", label: "Copiloto" },
-    { id: "rear", label: "Trasera" },
-    { id: "dashboard", label: "Tablero" },
+  // El id del slot es el que usa el componente de UI; la columna real en
+  // la base (y el nombre de carpeta en el bucket) usa el nombre en
+  // español — este mapa traduce entre ambos.
+  const slots: { id: string; label: string; columna: string }[] = [
+    { id: "front", label: "Frente", columna: "frente" },
+    { id: "driver", label: "Lado piloto", columna: "piloto" },
+    { id: "passenger", label: "Copiloto", columna: "copiloto" },
+    { id: "rear", label: "Trasera", columna: "trasera" },
+    { id: "dashboard", label: "Tablero", columna: "tablero" },
   ]
 
+  const abrirSelector = (slotId: string) => {
+    slotActivoRef.current = slotId
+    fileInputRef.current?.click()
+  }
+
+  const handleArchivoSeleccionado = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    const slotId = slotActivoRef.current
+    e.target.value = "" // permite volver a elegir el mismo archivo si reintenta
+    if (!file || !slotId) return
+
+    const slot = slots.find(s => s.id === slotId)
+    if (!slot) return
+
+    setPreviews(p => ({ ...p, [slotId]: URL.createObjectURL(file) }))
+    setSubiendo(s => ({ ...s, [slotId]: true }))
+    setErrorFotos("")
+
+    const ext = file.name.split(".").pop() || "jpg"
+    const path = `${viaje.id}/${conductorId}/${tipo}/${slot.columna}.${ext}`
+
+    const { error } = await sb.storage.from("evidencias-viaje").upload(path, file, { upsert: true })
+    setSubiendo(s => ({ ...s, [slotId]: false }))
+    if (error) {
+      setErrorFotos(`No se pudo subir la foto de "${slot.label}". Intenta de nuevo.`)
+      setPreviews(p => { const n = { ...p }; delete n[slotId]; return n })
+      return
+    }
+    setPaths(p => ({ ...p, [slotId]: path }))
+  }
+
   const handleSubmit = async () => {
+    const faltantes = slots.filter(s => !paths[s.id])
+    if (faltantes.length > 0) {
+      setErrorFotos(`Faltan fotos: ${faltantes.map(s => s.label).join(", ")}`)
+      return
+    }
     setEnviando(true)
-    await onSubmit({ km: parseInt(km) || 0, combustible, danos })
+    const fotosPorColumna: Record<string, string> = {}
+    slots.forEach(s => { fotosPorColumna[s.columna] = paths[s.id] })
+    await onSubmit({ km: parseInt(km) || 0, combustible, danos, fotos: fotosPorColumna })
     setEnviando(false)
   }
 
   return (
     <div className="absolute inset-0 z-50 flex flex-col bg-white">
+      <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
+        className="hidden" onChange={handleArchivoSeleccionado} />
       <div className="flex items-center gap-3 border-b border-rr-gray200 p-4">
         <button type="button" onClick={onClose}><X className="h-5 w-5 text-rr-gray500" /></button>
         <h3 className="font-bold text-rr-black">Evidencia {tipo === "inicial" ? "Inicial" : "Final"} · {viaje.folio}</h3>
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
-        <RREvidenceGallery
-          items={slots.map(s => ({ ...s, completed: !!fotos[s.id] }))}
-          onSelect={id => setFotos(f => ({ ...f, [id]: !f[id] }))}
-        />
+        <div>
+          <RREvidenceGallery
+            items={slots.map(s => ({ ...s, previewUrl: previews[s.id], subiendo: subiendo[s.id] }))}
+            onSelect={abrirSelector}
+          />
+          {errorFotos && <p className="text-xs text-rr-danger font-medium mt-2">{errorFotos}</p>}
+        </div>
         <div>
           <label className="block text-xs font-medium text-rr-gray500 mb-1">Kilometraje {tipo === "inicial" ? "inicial" : "final"}</label>
           <input type="number" value={km} onChange={e => setKm(e.target.value)} placeholder="45820"
@@ -1067,7 +1122,7 @@ function EvidenceModal({ viaje, onClose, onSubmit }: {
         </div>
       </div>
       <div className="border-t border-rr-gray200 p-4">
-        <RRButton fullWidth onClick={handleSubmit} disabled={enviando}>
+        <RRButton fullWidth onClick={handleSubmit} disabled={enviando || Object.values(subiendo).some(Boolean)}>
           {enviando ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
           {enviando ? "Guardando..." : `Confirmar evidencia ${tipo}`}
         </RRButton>

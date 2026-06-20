@@ -177,6 +177,8 @@ export async function subirEvidencia(payload: {
   llaves_recibidas?: number
   danos_iniciales?: string
   danos_finales?: string
+  // paths dentro del bucket evidencias-viaje, llave = frente|piloto|copiloto|trasera|tablero
+  fotos: Record<string, string>
   tipo: 'inicial' | 'final'
 }) {
   const inicial = payload.tipo === 'inicial'
@@ -189,6 +191,11 @@ export async function subirEvidencia(payload: {
     p_combustible: inicial ? payload.combustible_inicial ?? null : payload.combustible_final ?? null,
     p_danos: inicial ? payload.danos_iniciales ?? null : payload.danos_finales ?? null,
     p_llaves: payload.llaves_recibidas ?? null,
+    p_foto_frente: payload.fotos.frente ?? null,
+    p_foto_piloto: payload.fotos.piloto ?? null,
+    p_foto_copiloto: payload.fotos.copiloto ?? null,
+    p_foto_trasera: payload.fotos.trasera ?? null,
+    p_foto_tablero: payload.fotos.tablero ?? null,
   })
 
   if (error) throw error
