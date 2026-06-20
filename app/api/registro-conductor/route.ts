@@ -75,10 +75,11 @@ export async function POST(request: Request) {
   })
 
   if (authError || !authData.user) {
-    const msg = authError?.message?.includes('already been registered')
+    const yaExiste = authError?.message?.toLowerCase().includes('already')
+    const msg = yaExiste
       ? 'Ya existe una cuenta con ese correo.'
       : (authError?.message ?? 'No se pudo crear el usuario de autenticación.')
-    return badRequest(msg, 422)
+    return NextResponse.json({ error: msg, code: yaExiste ? 'ACCOUNT_EXISTS' : 'AUTH_CREATE_FAILED' }, { status: yaExiste ? 409 : 422 })
   }
 
   // ── 2. Insertar el perfil de negocio en `conductores` ───────────────────────

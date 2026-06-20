@@ -1437,9 +1437,11 @@ export default function DriverApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: registerData.password, perfilConductor }),
       })
+      const resultadoRegistro = await registro.json().catch(() => null) as { error?: string; code?: string } | null
       if (!registro.ok) {
-        const data = await registro.json().catch(() => null) as { error?: string } | null
-        throw new Error(data?.error ?? "No se pudo crear la cuenta.")
+        if (resultadoRegistro?.code !== "ACCOUNT_EXISTS") {
+          throw new Error(resultadoRegistro?.error ?? "No se pudo crear la cuenta.")
+        }
       }
 
       const { error: loginError } = await sb.auth.signInWithPassword({
