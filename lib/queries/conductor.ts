@@ -1,5 +1,7 @@
 // lib/queries/conductor.ts — conductor-ruum
 
+// lib/queries/conductor.ts — conductor-ruum
+
 import { supabase } from '@/lib/supabase'
 
 // ── AUTH ────────────────────────────────────────────────────
@@ -22,29 +24,33 @@ export async function verificarOTPConductor(telefono: string, token: string) {
 
 // ── PERFIL ──────────────────────────────────────────────────
 
-export async function getMiPerfilConductor() {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
+// Recibe el auth_id ya resuelto por el caller (normalmente desde el
+// listener de onAuthStateChange) en vez de volver a llamar a
+// supabase.auth.getUser() aquí dentro. Esto es deliberado: identificar
+// al conductor correcto es responsabilidad del cliente, que ya validó
+// la sesión real antes de pedir el perfil — re-derivarlo aquí podría
+// mostrarle a un conductor el panel de otro si hay una sesión obsoleta.
+// maybeSingle() (no single()) porque una cuenta recién registrada o
+// "Pendiente de validación" puede no tener fila aún, y eso no debe
+// lanzar una excepción.
+export async function getMiPerfilConductor(authId: string) {
   const { data } = await supabase
     .from('conductores')
-    .select('*')
-    .eq('auth_id', user.id)
-    .single()
+    .select('id, nombre, apellido, telefono, disponibilidad, calificacion, viajes_realizados, ganancias_total, certificacion')
+    .eq('auth_id', authId)
+    .maybeSingle()
 
   return data
 }
 
 export async function updateDisponibilidad(
+  conductorId: string,
   disponibilidad: 'Disponible' | 'No disponible' | 'En viaje' | 'Pausado'
 ) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('No autenticado')
-
   const { data, error } = await supabase
     .from('conductores')
     .update({ disponibilidad })
-    .eq('auth_id', user.id)
+    .eq('id', conductorId)
     .select()
     .single()
 
@@ -54,47 +60,31 @@ export async function updateDisponibilidad(
 
 // ── VIAJES ──────────────────────────────────────────────────
 
-export async function getMisViajesConductor() {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { solicitados: [], aceptados: [] }
-
-  const { data: conductor } = await supabase
-    .from('conductores').select('id').eq('auth_id', user.id).single()
-  if (!conductor) return { solicitados: [], aceptados: [] }
-
-  const [{ data: asignados }, { data: activos }] = await Promise.all([
-    // Viajes asignados aún no aceptados
-    supabase.from('viajes').select(`
+// Una sola query con todos los viajes no cerrados del conductor. El
+// split entre "solicitados" (Conductor asignado) y "aceptados" (en
+// curso) se hace en el cliente con .filter() — así es como ya opera
+// el componente real, que muestra ambos grupos como pestañas de una
+// misma lista cargada una vez. (El diseño original de esta función
+// hacía dos queries separadas devolviendo {solicitados, aceptados}
+// pre-divididos; no se usaba en ningún lado y no coincidía con cómo
+// el componente realmente arma sus pestañas, así que se reemplazó.)
+export async function getMisViajesConductor(conductorId: string) {
+  const { data, error } = await supabase
+    .from('viajes')
+    .select(`
       id, folio, status, fecha_programada, hora_programada,
-      origen_calle, origen_colonia, destino_calle, destino_colonia,
-      pago_conductor,
-      vehiculos(marca, modelo, placas, transmision)
+      origen_calle, origen_colonia, origen_estado, origen_contacto, origen_telefono,
+      destino_calle, destino_colonia, destino_estado, destino_contacto, destino_telefono,
+      instrucciones, pago_conductor, gastos_autorizados,
+      vehiculos(marca, modelo, placas, transmision),
+      usuarios(nombre, apellido)
     `)
-      .eq('conductor_id', conductor.id)
-      .eq('status', 'Conductor asignado')
-      .order('created_at', { ascending: false }),
+    .eq('conductor_id', conductorId)
+    .not('status', 'in', '("Finalizado","Cancelado")')
+    .order('created_at', { ascending: false })
 
-    // Viajes en curso o pendientes de acción del conductor
-    supabase.from('viajes').select(`
-      id, folio, status, fecha_programada, hora_programada,
-      origen_calle, origen_numero, origen_colonia, origen_estado,
-      origen_contacto, origen_telefono,
-      destino_calle, destino_numero, destino_colonia, destino_estado,
-      destino_contacto, destino_telefono,
-      instrucciones, referencias, pago_conductor,
-      vehiculos(marca, modelo, anio, color, placas, transmision),
-      usuarios(nombre, apellido, telefono)
-    `)
-      .eq('conductor_id', conductor.id)
-      .in('status', [
-        'Conductor en camino','Recolección en proceso',
-        'Evidencia inicial pendiente','Traslado en curso',
-        'Entrega en proceso','Evidencia final pendiente',
-      ])
-      .order('updated_at', { ascending: false }),
-  ])
-
-  return { solicitados: asignados ?? [], aceptados: activos ?? [] }
+  if (error) throw error
+  return data
 }
 
 export async function aceptarViaje(viajeId: string, conductorNombre: string) {
@@ -110,6 +100,30 @@ export async function aceptarViaje(viajeId: string, conductorNombre: string) {
   await supabase.from('timeline_viaje').insert({
     viaje_id: viajeId,
     evento: 'Conductor aceptó el viaje',
+    actor: conductorNombre,
+    actor_tipo: 'conductor',
+  })
+
+  return data
+}
+
+// No reutiliza cambiarStatusViaje a propósito: rechazar también debe
+// limpiar conductor_id (ver RT-02), algo que las demás transiciones
+// de estatus no deben hacer. Mezclar ese caso especial dentro de la
+// función genérica lo esconde; mejor una función dedicada.
+export async function rechazarViaje(viajeId: string, conductorNombre: string) {
+  const { data, error } = await supabase
+    .from('viajes')
+    .update({ status: 'Pendiente de asignación', conductor_id: null })
+    .eq('id', viajeId)
+    .select()
+    .single()
+
+  if (error) throw error
+
+  await supabase.from('timeline_viaje').insert({
+    viaje_id: viajeId,
+    evento: 'Conductor rechazó el viaje',
     actor: conductorNombre,
     actor_tipo: 'conductor',
   })
@@ -191,18 +205,11 @@ export async function subirEvidencia(payload: {
 
 // ── GANANCIAS ────────────────────────────────────────────────
 
-export async function getMisGanancias() {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return []
-
-  const { data: conductor } = await supabase
-    .from('conductores').select('id').eq('auth_id', user.id).single()
-  if (!conductor) return []
-
+export async function getMisGanancias(conductorId: string) {
   const { data, error } = await supabase
     .from('pagos_conductores')
     .select('*')
-    .eq('conductor_id', conductor.id)
+    .eq('conductor_id', conductorId)
     .order('created_at', { ascending: false })
 
   if (error) throw error

@@ -1,7 +1,12 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase as sb } from "@/lib/supabase";
+import {
+  getMiPerfilConductor, updateDisponibilidad, getMisViajesConductor,
+  aceptarViaje, rechazarViaje, cambiarStatusViaje, getMisGanancias,
+  suscribirViajesAsignados,
+} from "@/lib/queries/conductor";
 import {
   AlertCircle, Camera, Car, Check, ChevronRight,
   FileText, Fuel, Gauge, Home, Landmark, MapPin,
@@ -18,12 +23,6 @@ import {
   RRTimeline,
 } from "@/components/rr";
 import { formatMoney } from "@/lib/design-system/utils";
-
-// ─── SUPABASE ────────────────────────────────────────────────────────────────
-const sb = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
 
 // ─── TIPOS ───────────────────────────────────────────────────────────────────
 type View = "panel" | "viajes" | "ganancias" | "configuracion";
@@ -793,9 +792,10 @@ function PanelView({ conductor, viajes, onDisponibilidadChange, cargando }: {
 }
 
 // ─── VIAJES VIEW ──────────────────────────────────────────────────────────────
-function VijesView({ conductor, viajes, onAceptar, onCambiarStatus, cargando }: {
+function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, cargando }: {
   conductor: ConductorPerfil | null; viajes: ViajeDB[]
   onAceptar: (id: string) => Promise<void>
+  onRechazar: (id: string) => Promise<void>
   onCambiarStatus: (id: string, status: string, evento: string) => Promise<void>
   cargando: boolean
 }) {
@@ -817,7 +817,7 @@ function VijesView({ conductor, viajes, onAceptar, onCambiarStatus, cargando }: 
 
   const handleRechazar = async (viaje: ViajeDB) => {
     if (!window.confirm("¿Estás seguro de rechazar esta oferta?")) return
-    await onCambiarStatus(viaje.id, "Pendiente de asignación", "Conductor rechazó el viaje")
+    await onRechazar(viaje.id)
   }
 
   return (
@@ -907,7 +907,7 @@ function VijesView({ conductor, viajes, onAceptar, onCambiarStatus, cargando }: 
         <EvidenceModal viaje={evidenceViaje} onClose={() => setEvidenceViaje(null)}
           onSubmit={async (datos) => {
             const tipo = evidenceViaje.status === "Recolección en proceso" ? "inicial" : "final"
-            await sb.from("evidencias").upsert({
+            const { error } = await sb.from("evidencias").upsert({
               viaje_id: evidenceViaje.id,
               km_inicial: tipo === "inicial" ? datos.km : undefined,
               km_final: tipo === "final" ? datos.km : undefined,
@@ -917,6 +917,13 @@ function VijesView({ conductor, viajes, onAceptar, onCambiarStatus, cargando }: 
               danos_finales: tipo === "final" ? datos.danos : undefined,
               estatus: "En revisión",
             }, { onConflict: "viaje_id" })
+
+            if (error) {
+              console.error("Error guardando evidencia:", error)
+              alert("No se pudo guardar la evidencia. Intenta de nuevo.")
+              return // no avanza el estatus del viaje si la evidencia no se guardó
+            }
+
             const nuevoStatus = tipo === "inicial" ? "Evidencia inicial pendiente" : "Evidencia final pendiente"
             const evento = tipo === "inicial" ? "Evidencia inicial cargada" : "Evidencia final cargada"
             await onCambiarStatus(evidenceViaje.id, nuevoStatus, evento)
@@ -1116,11 +1123,7 @@ export default function DriverApp() {
   // pero identificar al conductor correcto es responsabilidad del cliente.
   const cargarConductor = useCallback(async () => {
     if (!conductorAuthId) { setConductor(null); return }
-    const { data } = await sb.from("conductores")
-      .select("id, nombre, apellido, telefono, disponibilidad, calificacion, viajes_realizados, ganancias_total, certificacion")
-      .eq("auth_id", conductorAuthId)
-      .maybeSingle()
-
+    const data = await getMiPerfilConductor(conductorAuthId)
     setConductor(data as ConductorPerfil | null)
   }, [conductorAuthId])
 
@@ -1159,25 +1162,22 @@ export default function DriverApp() {
 
   const cargarViajes = useCallback(async () => {
     if (!conductor) return
-    const { data } = await sb.from("viajes").select(`
-        id, folio, status, fecha_programada, hora_programada,
-        origen_calle, origen_colonia, origen_estado, origen_contacto, origen_telefono,
-        destino_calle, destino_colonia, destino_estado, destino_contacto, destino_telefono,
-        instrucciones, pago_conductor, gastos_autorizados,
-        vehiculos(marca, modelo, placas, transmision),
-        usuarios(nombre, apellido)
-      `)
-      .eq("conductor_id", conductor.id)
-      .not("status", "in", '("Finalizado","Cancelado")')
-      .order("created_at", { ascending: false })
-    if (data) setViajes(data as unknown as ViajeDB[])
+    try {
+      const data = await getMisViajesConductor(conductor.id)
+      setViajes(data as unknown as ViajeDB[])
+    } catch (e) {
+      console.error("Error cargando viajes:", e)
+    }
   }, [conductor])
 
   const cargarPagos = useCallback(async () => {
     if (!conductor) return
-    const { data } = await sb.from("pagos_conductores").select("*")
-      .eq("conductor_id", conductor.id).order("created_at", { ascending: false })
-    if (data) setPagos(data as PagoResumen[])
+    try {
+      const data = await getMisGanancias(conductor.id)
+      setPagos(data as PagoResumen[])
+    } catch (e) {
+      console.error("Error cargando pagos:", e)
+    }
   }, [conductor])
 
   useEffect(() => { cargarConductor() }, [cargarConductor])
@@ -1185,10 +1185,7 @@ export default function DriverApp() {
   useEffect(() => {
     if (conductor) {
       Promise.all([cargarViajes(), cargarPagos()]).then(() => setCargando(false))
-      const channel = sb.channel(`conductor-viajes-${conductor.id}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "viajes", filter: `conductor_id=eq.${conductor.id}` },
-          () => cargarViajes())
-        .subscribe()
+      const channel = suscribirViajesAsignados(conductor.id, () => cargarViajes())
       return () => { sb.removeChannel(channel) }
     }
   }, [conductor, cargarViajes, cargarPagos])
@@ -1200,25 +1197,25 @@ export default function DriverApp() {
 
   const handleDisponibilidadChange = async (disponibilidad: string) => {
     if (!conductor) return
-    await sb.from("conductores").update({ disponibilidad }).eq("id", conductor.id)
+    await updateDisponibilidad(conductor.id, disponibilidad as "Disponible" | "No disponible" | "En viaje" | "Pausado")
     setConductor(prev => prev ? { ...prev, disponibilidad } : null)
   }
 
   const handleAceptar = async (viajeId: string) => {
-    await sb.from("viajes").update({ status: "Conductor en camino" }).eq("id", viajeId)
-    await sb.from("timeline_viaje").insert({
-      viaje_id: viajeId, evento: "Conductor aceptó el viaje",
-      actor: conductor ? `${conductor.nombre} ${conductor.apellido}` : "Conductor", actor_tipo: "conductor",
-    })
+    const nombre = conductor ? `${conductor.nombre} ${conductor.apellido}` : "Conductor"
+    await aceptarViaje(viajeId, nombre)
+    await cargarViajes()
+  }
+
+  const handleRechazarViaje = async (viajeId: string) => {
+    const nombre = conductor ? `${conductor.nombre} ${conductor.apellido}` : "Conductor"
+    await rechazarViaje(viajeId, nombre)
     await cargarViajes()
   }
 
   const handleCambiarStatus = async (viajeId: string, status: string, evento: string) => {
-    await sb.from("viajes").update({ status }).eq("id", viajeId)
-    await sb.from("timeline_viaje").insert({
-      viaje_id: viajeId, evento,
-      actor: conductor ? `${conductor.nombre} ${conductor.apellido}` : "Conductor", actor_tipo: "conductor",
-    })
+    const nombre = conductor ? `${conductor.nombre} ${conductor.apellido}` : "Conductor"
+    await cambiarStatusViaje(viajeId, status, nombre, evento)
     await cargarViajes()
   }
 
@@ -1345,7 +1342,7 @@ export default function DriverApp() {
         <Header onOpenSettings={() => showView("configuracion")} conductor={conductor} />
         <main ref={mainRef} className="no-scrollbar relative flex-1 overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#EDF4FF_100%)]">
           {activeView === "panel" && <PanelView conductor={conductor} viajes={viajes} onDisponibilidadChange={handleDisponibilidadChange} cargando={cargando} />}
-          {activeView === "viajes" && <VijesView conductor={conductor} viajes={viajes} onAceptar={handleAceptar} onCambiarStatus={handleCambiarStatus} cargando={cargando} />}
+          {activeView === "viajes" && <VijesView conductor={conductor} viajes={viajes} onAceptar={handleAceptar} onRechazar={handleRechazarViaje} onCambiarStatus={handleCambiarStatus} cargando={cargando} />}
           {activeView === "ganancias" && <GananciasView conductor={conductor} pagos={pagos} cargando={cargando} />}
           {activeView === "configuracion" && <SettingsView conductor={conductor} onBack={() => showView("panel")} />}
         </main>
