@@ -6,15 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "quality": "npm run lint && npm run typecheck && npm run build",
+    "audit": "npm audit --audit-level=high"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",
     "lucide-react": "^0.468.0",
     "next": "^16.2.9",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "twilio": "^6.0.2"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",

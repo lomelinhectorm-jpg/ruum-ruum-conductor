@@ -286,7 +286,9 @@ function StepRegister({ onBack, onNext }: {
     if (!form.apellido.trim())  e.apellido  = "Requerido"
     if (form.telefono.replace(/\D/g,"").length < 10) e.telefono = "Ingresa 10 dígitos"
     if (!form.email)            e.email     = "Requerido"
-    if (form.password.length < 8) e.password = "Mínimo 8 caracteres"
+    if (form.password.length < 8 || !/[A-Za-z]/.test(form.password) || !/\d/.test(form.password)) {
+      e.password = "Mínimo 8 caracteres, una letra y un número"
+    }
     if (form.password !== form.confirmar) e.confirmar = "Las contraseñas no coinciden"
     if (!form.municipio.trim()) e.municipio = "Requerido"
     if (!form.estado.trim())    e.estado    = "Requerido"
@@ -406,7 +408,7 @@ function StepRegister({ onBack, onNext }: {
             <div>
               <OLabel req>Contraseña</OLabel>
               <div className="relative">
-                <input type={show ? "text" : "password"} value={form.password} placeholder="Mínimo 8 caracteres"
+                <input type={show ? "text" : "password"} value={form.password} placeholder="8 caracteres, letra y número"
                   onChange={e => set("password", e.target.value)} className={inputCls(errors.password)} />
                 <button type="button" onClick={() => setShow(s => !s)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-slate-700">
@@ -985,6 +987,8 @@ function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, 
               combustible_final: tipo === "final" ? datos.combustible : undefined,
               danos_iniciales: tipo === "inicial" ? datos.danos : undefined,
               danos_finales: tipo === "final" ? datos.danos : undefined,
+              llaves_recibidas: tipo === "inicial" ? datos.llaves : undefined,
+              llaves_entregadas: tipo === "final" ? datos.llaves : undefined,
               fotos: datos.fotos,
               tipo,
               })
@@ -1122,9 +1126,10 @@ function EvidenceViewerModal({ viaje, onClose }: { viaje: ViajeDB; onClose: () =
 // ─── EVIDENCE MODAL ───────────────────────────────────────────────────────────
 function EvidenceModal({ viaje, conductorId, onClose, onSubmit }: {
   viaje: ViajeDB; conductorId: string; onClose: () => void
-  onSubmit: (datos: { km: number; combustible: string; danos: string; fotos: Record<string, string> }) => Promise<void>
+  onSubmit: (datos: { km: number; combustible: string; danos: string; llaves: number; fotos: Record<string, string> }) => Promise<void>
 }) {
   const [km, setKm] = useState("")
+  const [llaves, setLlaves] = useState("1")
   const [combustible, setCombustible] = useState("1/2")
   const [danos, setDanos] = useState("")
   const [enviando, setEnviando] = useState(false)
@@ -1189,7 +1194,13 @@ function EvidenceModal({ viaje, conductorId, onClose, onSubmit }: {
     setEnviando(true)
     const fotosPorColumna: Record<string, string> = {}
     slots.forEach(s => { fotosPorColumna[s.columna] = paths[s.id] })
-    await onSubmit({ km: parseInt(km) || 0, combustible, danos, fotos: fotosPorColumna })
+    await onSubmit({
+      km: parseInt(km) || 0,
+      combustible,
+      danos,
+      llaves: Math.max(0, parseInt(llaves) || 0),
+      fotos: fotosPorColumna,
+    })
     setEnviando(false)
   }
 
@@ -1235,6 +1246,14 @@ function EvidenceModal({ viaje, conductorId, onClose, onSubmit }: {
               </button>
             ))}
           </div>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-rr-gray500 mb-1">
+            Llaves {tipo === "inicial" ? "recibidas" : "entregadas"}
+          </label>
+          <input type="number" min="0" max="20" value={llaves}
+            onChange={e => setLlaves(e.target.value)}
+            className="w-full border border-rr-gray300 rounded-rrMd px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rr-primary" />
         </div>
         <div>
           <label className="block text-xs font-medium text-rr-gray500 mb-1">Daños visibles</label>
@@ -1362,15 +1381,37 @@ export default function DriverApp() {
     }
   }, [conductor])
 
-  useEffect(() => { cargarConductor() }, [cargarConductor])
+  useEffect(() => {
+    if (!conductorAuthId) return
+    let activo = true
+    getMiPerfilConductor(conductorAuthId)
+      .then(data => { if (activo) setConductor(data as ConductorPerfil | null) })
+      .catch(e => console.error("Error cargando conductor:", e))
+    return () => { activo = false }
+  }, [conductorAuthId])
 
   useEffect(() => {
-    if (conductor) {
-      Promise.all([cargarViajes(), cargarPagos()]).then(() => setCargando(false))
-      const channel = suscribirViajesAsignados(conductor.id, () => cargarViajes())
-      return () => { sb.removeChannel(channel) }
+    if (!conductor) return
+    let activo = true
+    Promise.all([
+      getMisViajesConductor(conductor.id),
+      getMisGanancias(conductor.id),
+    ]).then(([viajesData, pagosData]) => {
+      if (!activo) return
+      setViajes(viajesData as unknown as ViajeDB[])
+      setPagos(pagosData as PagoResumen[])
+    }).catch(e => {
+      console.error("Error cargando panel del conductor:", e)
+    }).finally(() => {
+      if (activo) setCargando(false)
+    })
+
+    const channel = suscribirViajesAsignados(conductor.id, () => { void cargarViajes() })
+    return () => {
+      activo = false
+      void sb.removeChannel(channel)
     }
-  }, [conductor, cargarViajes, cargarPagos])
+  }, [conductor, cargarViajes])
 
   const showView = (view: View) => {
     setActiveView(view)

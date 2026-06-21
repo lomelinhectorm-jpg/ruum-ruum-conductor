@@ -180,6 +180,7 @@ export async function subirEvidencia(payload: {
   combustible_inicial?: string
   combustible_final?: string
   llaves_recibidas?: number
+  llaves_entregadas?: number
   danos_iniciales?: string
   danos_finales?: string
   // paths dentro del bucket evidencias-viaje, llave = frente|piloto|copiloto|trasera|tablero
@@ -195,7 +196,7 @@ export async function subirEvidencia(payload: {
     p_km: inicial ? payload.km_inicial ?? null : payload.km_final ?? null,
     p_combustible: inicial ? payload.combustible_inicial ?? null : payload.combustible_final ?? null,
     p_danos: inicial ? payload.danos_iniciales ?? null : payload.danos_finales ?? null,
-    p_llaves: payload.llaves_recibidas ?? null,
+    p_llaves: inicial ? payload.llaves_recibidas ?? null : payload.llaves_entregadas ?? null,
     p_foto_frente: payload.fotos.frente ?? null,
     p_foto_piloto: payload.fotos.piloto ?? null,
     p_foto_copiloto: payload.fotos.copiloto ?? null,

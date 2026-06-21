@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { checkRegistrationRequest, isAcceptablePassword } from '@/lib/server/registration-security'
 
 type PerfilConductor = {
   nombre: string
@@ -30,6 +31,16 @@ export async function POST(request: Request) {
     return badRequest('Falta configurar SUPABASE_SERVICE_ROLE_KEY en el servidor.', 500)
   }
 
+  const contentLength = Number(request.headers.get('content-length') ?? 0)
+  if (contentLength > 100_000) return badRequest('Solicitud demasiado grande.', 413)
+  const access = checkRegistrationRequest(request, 'conductor')
+  if (!access.allowed) {
+    return NextResponse.json(
+      { error: access.message },
+      { status: access.status, headers: access.retryAfter ? { 'Retry-After': String(access.retryAfter) } : undefined },
+    )
+  }
+
   const body = await request.json().catch(() => null) as {
     password?: string
     perfilConductor?: Partial<PerfilConductor>
@@ -41,6 +52,9 @@ export async function POST(request: Request) {
 
   if (!perfil?.email || !password) return badRequest('Correo y contraseña son requeridos.')
   if (!perfil.nombre || !perfil.apellido || !perfil.telefono) return badRequest('Datos personales incompletos.')
+  if (!isAcceptablePassword(password)) {
+    return badRequest('La contraseña debe tener al menos 8 caracteres, una letra y un número.')
+  }
 
   const email = String(perfil.email).toLowerCase().trim()
   const admin = createClient(supabaseUrl, serviceRoleKey, {
