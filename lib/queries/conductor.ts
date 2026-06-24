@@ -118,6 +118,7 @@ export async function getMisViajesConductor(conductorId: string) {
       tipos_servicio(nombre, descripcion),
       vehiculos(marca, modelo, placas, transmision),
       usuarios(nombre, apellido),
+      empresas(nombre_comercial),
       evidencias(
         id, km_inicial, km_final, combustible_inicial, combustible_final,
         foto_frente_i, foto_piloto_i, foto_copiloto_i, foto_trasera_i, foto_tablero_i,

@@ -11,7 +11,7 @@ import {
   crearIncidenciaConductor,
 } from "@/lib/queries/conductor";
 import {
-  CalendarDays, Camera, Car, Check, ChevronLeft, ChevronRight,
+  CalendarDays, Camera, Car, Check, ChevronLeft, ChevronRight, Clock,
   FileText, Fuel, Gauge, Home, Landmark, MapPin,
   Star, User, Wallet, X, Loader,
   Eye, EyeOff, Upload, Shield, TriangleAlert
@@ -91,6 +91,7 @@ interface ViajeDB {
   tipos_servicio: { nombre: string; descripcion: string | null } | null
   vehiculos: { marca: string; modelo: string; placas: string; transmision: string | null } | null
   usuarios: { nombre: string; apellido: string } | null
+  empresas: { nombre_comercial: string | null } | null
   evidencias: {
     id: string
     km_inicial: number | null
@@ -121,6 +122,57 @@ const CAMPOS_FOTO_EVIDENCIA = [
 function contarFotos(viaje: ViajeDB) {
   return (viaje.evidencias ?? []).reduce((total, evidencia) =>
     total + CAMPOS_FOTO_EVIDENCIA.filter(([campo]) => Boolean(evidencia[campo])).length, 0)
+}
+
+// Estatus en los que el viaje ya fue aceptado y está en ejecución
+// (lo usa tanto el banner del Panel como el de la sección Viajes).
+const ESTATUS_VIAJE_EN_CURSO = [
+  "Conductor en camino", "Recolección en proceso", "Evidencia inicial pendiente",
+  "Traslado en curso", "Entrega en proceso",
+] as const
+
+function obtenerViajeActivo(viajes: ViajeDB[]) {
+  return viajes.find(v => (ESTATUS_VIAJE_EN_CURSO as readonly string[]).includes(v.status))
+}
+
+// Abreviaturas de uso común para las 32 entidades. Es solo para la
+// etiqueta "Ciudad: {estado} - {abreviatura}"; no participa en ninguna
+// comparación ni validación, así que no necesita ser exhaustiva ni
+// coincidir con un catálogo oficial.
+const ABREVIATURA_ESTADO: Record<string, string> = {
+  "Aguascalientes": "AGS", "Baja California": "BC", "Baja California Sur": "BCS",
+  "Campeche": "CAM", "Chiapas": "CHIS", "Chihuahua": "CHIH", "Ciudad de México": "CDMX",
+  "Coahuila": "COAH", "Colima": "COL", "Durango": "DGO", "Estado de México": "EDOMEX",
+  "Guanajuato": "GTO", "Guerrero": "GRO", "Hidalgo": "HGO", "Jalisco": "JAL",
+  "Michoacán": "MICH", "Morelos": "MOR", "Nayarit": "NAY", "Nuevo León": "NL",
+  "Oaxaca": "OAX", "Puebla": "PUE", "Querétaro": "QRO", "Quintana Roo": "QROO",
+  "San Luis Potosí": "SLP", "Sinaloa": "SIN", "Sonora": "SON", "Tabasco": "TAB",
+  "Tamaulipas": "TAMPS", "Tlaxcala": "TLAX", "Veracruz": "VER", "Yucatán": "YUC",
+  "Zacatecas": "ZAC",
+}
+
+function etiquetaCiudad(estado: string | null) {
+  if (!estado) return null
+  const abrev = ABREVIATURA_ESTADO[estado]
+  return abrev ? `${estado} - ${abrev}` : estado
+}
+
+// Título corto para identificar el viaje en la tarjeta compacta: usa el
+// contacto de destino si lo capturaron (p.ej. el nombre de una sucursal),
+// y si no, la referencia geográfica más específica disponible.
+function tituloViaje(viaje: ViajeDB) {
+  return (viaje.destino_contacto || viaje.destino_colonia || viaje.destino_calle || "Destino").toUpperCase()
+}
+
+function solicitantePorViaje(viaje: ViajeDB) {
+  if (viaje.empresas?.nombre_comercial) return viaje.empresas.nombre_comercial
+  if (viaje.usuarios) return `${viaje.usuarios.nombre} ${viaje.usuarios.apellido}`
+  return "Cliente particular"
+}
+
+const MESES_ABREV = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
+function formatoHoy(fecha = new Date()) {
+  return `${fecha.getDate()} de ${MESES_ABREV[fecha.getMonth()]} ${fecha.getFullYear()}`
 }
 
 interface PagoResumen {
@@ -824,9 +876,7 @@ function PanelView({ conductor, viajes, pagos, onDisponibilidadChange, onVerViaj
 }) {
   const desde = inicioSemana(); const hasta = new Date(desde); hasta.setDate(hasta.getDate() + 7)
   const viajesSemana = viajes.filter(v => { const f = fechaLocal(v.fecha_programada) ?? new Date(v.created_at); return f >= desde && f < hasta })
-  const viajeActivo = viajes.find(v =>
-    ["Conductor en camino","Recolección en proceso","Evidencia inicial pendiente",
-     "Traslado en curso","Entrega en proceso"].includes(v.status))
+  const viajeActivo = obtenerViajeActivo(viajes)
   const viajesCompletados = viajesSemana.filter(v => v.status === "Finalizado").length
   const viajesActivos = viajesSemana.filter(v => !["Conductor asignado", "Finalizado", "Cancelado"].includes(v.status)).length
   const viajesPendientes = viajesSemana.filter(v => v.status === "Conductor asignado").length
@@ -924,6 +974,40 @@ function IncidenciaModal({ viaje, onClose }: { viaje: ViajeDB; onClose: () => vo
   return <div className="absolute inset-0 z-50 flex items-end bg-black/50"><div className="max-h-[90%] w-full overflow-y-auto rounded-t-3xl bg-white p-5"><div className="mb-4 flex items-start justify-between"><div><h3 className="font-bold text-rr-black">Reportar incidencia</h3><p className="text-xs text-rr-gray500">{viaje.folio} · {viaje.origen_calle} → {viaje.destino_calle}</p></div><button onClick={onClose}><X className="h-5 w-5" /></button></div><label className="mb-1 block text-xs font-semibold uppercase text-rr-gray500">Tipo</label><select value={tipo} onChange={e => setTipo(e.target.value)} className="mb-3 w-full rounded-xl border border-rr-gray200 p-3 text-sm"><option value="">Seleccionar...</option>{TIPOS_INCIDENCIA.map(t => <option key={t}>{t}</option>)}</select><label className="mb-1 block text-xs font-semibold uppercase text-rr-gray500">Descripción</label><textarea rows={5} value={descripcion} onChange={e => setDescripcion(e.target.value)} className="w-full rounded-xl border border-rr-gray200 p-3 text-sm" placeholder="Explica qué ocurrió y qué apoyo necesitas..." />{error && <p className="mt-2 text-xs font-medium text-red-500">{error}</p>}<RRButton className="mt-4" fullWidth onClick={enviar} disabled={enviando}><TriangleAlert className="h-4 w-4" />{enviando ? 'Enviando...' : 'Enviar reporte'}</RRButton></div></div>
 }
 
+// Tarjeta colapsada estilo "lista" (folio, precio, título, ciudad,
+// solicitante, fecha/hora) que se expande al tocarla para revelar el
+// detalle completo y las acciones del viaje. Se usa en ambas pestañas
+// (ofertas y aceptados) para mantener la misma distribución visual.
+function TripCompactCard({ viaje, expanded, onToggle, leftAccent, children }: {
+  viaje: ViajeDB; expanded: boolean; onToggle: () => void; leftAccent?: string; children: React.ReactNode
+}) {
+  const ciudad = etiquetaCiudad(viaje.destino_estado)
+  return (
+    <RRCard className={cx("overflow-hidden p-0", leftAccent)}>
+      <button type="button" onClick={onToggle} className="flex w-full items-start justify-between gap-3 p-4 text-left">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-xs text-rr-gray500">Viaje #{viaje.folio ?? viaje.id.slice(0, 8)}</span>
+            <span className="flex items-center gap-1 text-sm font-bold text-rr-success">
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-rr-success text-[10px] font-bold text-white">$</span>
+              {formatMoney(viaje.pago_conductor)}
+            </span>
+          </div>
+          <p className="truncate text-sm font-bold text-rr-black">{tituloViaje(viaje)}</p>
+          {ciudad && <p className="mt-0.5 truncate text-xs text-rr-gray500">Ciudad: {ciudad}</p>}
+          <p className="mt-0.5 truncate text-xs text-rr-gray500">Solicitado por: {solicitantePorViaje(viaje)}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-rr-gray500">
+            {viaje.hora_programada && <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{viaje.hora_programada.slice(0, 5)}</span>}
+            {viaje.fecha_programada && <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{viaje.fecha_programada}</span>}
+          </div>
+        </div>
+        <ChevronRight className={cx("mt-1 h-5 w-5 flex-shrink-0 text-rr-gray300 transition-transform", expanded && "rotate-90")} />
+      </button>
+      {expanded && <div className="border-t border-rr-gray100 p-4">{children}</div>}
+    </RRCard>
+  )
+}
+
 function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCambiarStatus, onCerrar, onRecargar, cargando }: {
   conductor: ConductorPerfil | null; viajes: ViajeDB[]; initialTab?: TripTab
   onAceptar: (id: string) => Promise<void>
@@ -940,7 +1024,9 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
   const [incidenciaViaje, setIncidenciaViaje] = useState<ViajeDB | null>(null)
   const [semana, setSemana] = useState(() => inicioSemana())
   const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null)
+  const [expandidoId, setExpandidoId] = useState<string | null>(null)
 
+  const viajeActivo = obtenerViajeActivo(viajes)
   const solicitados = viajes.filter(v => v.status === "Conductor asignado")
   const aceptados = viajes.filter(v =>
     ["Conductor en camino","Recolección en proceso","Evidencia inicial pendiente",
@@ -948,6 +1034,8 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
   const diasSemana = Array.from({ length: 7 }, (_, i) => { const d = new Date(semana); d.setDate(d.getDate() + i); return d })
   const moverSemana = (cantidad: number) => setSemana(s => { const d = new Date(s); d.setDate(d.getDate() + cantidad * 7); return d })
   const isoLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const hoyIso = isoLocal(new Date())
+  const toggleExpandido = (id: string) => setExpandidoId(prev => prev === id ? null : id)
 
   const handleAceptar = async (viaje: ViajeDB) => {
     setAceptando(viaje.id)
@@ -963,18 +1051,40 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
 
   return (
     <section className="rr-fade-in p-5 pb-24">
-      <h2 className="mb-4 text-xl font-bold text-rr-black">Tus viajes</h2>
+      <h2 className="mb-4 text-xl font-bold text-rr-black">Viajes</h2>
+
+      {viajeActivo && (
+        <button type="button" onClick={() => setActiveTab("aceptados")}
+          className="mb-5 flex w-full items-center justify-between gap-3 rounded-rrLg bg-rr-secondary p-4 text-left text-white">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-bold">Viaje #{viajeActivo.folio ?? viajeActivo.id.slice(0, 8)}</span>
+              <Car className="h-4 w-4 text-rr-primary" />
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                <span className="h-1.5 w-1.5 rounded-full bg-rr-primary" />
+                En curso
+              </span>
+            </div>
+            <p className="mt-1 truncate text-xs text-white/70">{viajeActivo.status}</p>
+          </div>
+          <ChevronRight className="h-5 w-5 flex-shrink-0 text-white/60" />
+        </button>
+      )}
+
       <RRCard className="mb-5 p-4">
         <div className="mb-3 flex items-center justify-between"><button onClick={() => moverSemana(-1)} className="rounded-full p-1.5 hover:bg-rr-gray100"><ChevronLeft className="h-4 w-4" /></button><div className="text-center"><p className="flex items-center justify-center gap-1 text-sm font-bold text-rr-black"><CalendarDays className="h-4 w-4" />Agenda semanal</p><p className="text-xs text-rr-gray500">{diasSemana[0].toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })} – {diasSemana[6].toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}</p></div><button onClick={() => moverSemana(1)} className="rounded-full p-1.5 hover:bg-rr-gray100"><ChevronRight className="h-4 w-4" /></button></div>
-        <div className="grid grid-cols-7 gap-1">{diasSemana.map(d => { const iso = isoLocal(d); const delDia = viajes.filter(v => v.fecha_programada === iso); const activo = diaSeleccionado === iso; return <button key={iso} onClick={() => setDiaSeleccionado(activo ? null : iso)} className={cx("rounded-xl py-2 text-center", activo ? "bg-rr-secondary text-white" : "bg-rr-gray100 text-rr-gray700")}><span className="block text-[10px] font-semibold uppercase">{d.toLocaleDateString('es-MX', { weekday: 'short' }).slice(0, 2)}</span><span className="block text-sm font-bold">{d.getDate()}</span><span className={cx("mx-auto mt-1 block h-1.5 w-1.5 rounded-full", delDia.length ? "bg-rr-primary" : "bg-transparent")} /></button> })}</div>
-        {diaSeleccionado && <div className="mt-3 border-t border-rr-gray100 pt-3"><p className="mb-2 text-xs font-semibold text-rr-gray500">{viajes.filter(v => v.fecha_programada === diaSeleccionado).length} viaje(s) programado(s)</p>{viajes.filter(v => v.fecha_programada === diaSeleccionado).map(v => <p key={v.id} className="mb-1 truncate text-xs text-rr-black"><span className="font-bold">{v.hora_programada?.slice(0,5) || '—'}</span> · {v.origen_calle} → {v.destino_calle}</p>)}</div>}
+        <div className="grid grid-cols-7 gap-1">{diasSemana.map(d => { const iso = isoLocal(d); const delDia = viajes.filter(v => v.fecha_programada === iso); const activo = diaSeleccionado ? diaSeleccionado === iso : iso === hoyIso; return <button key={iso} onClick={() => setDiaSeleccionado(diaSeleccionado === iso ? null : iso)} className={cx("rounded-xl py-2 text-center", activo ? "bg-rr-secondary text-white" : "bg-rr-gray100 text-rr-gray700")}><span className="block text-[10px] font-semibold uppercase">{d.toLocaleDateString('es-MX', { weekday: 'short' }).slice(0, 2)}</span><span className="block text-sm font-bold">{d.getDate()}</span><span className={cx("mx-auto mt-1 block h-1.5 w-1.5 rounded-full", delDia.length ? "bg-rr-primary" : "bg-transparent")} /></button> })}</div>
+        {diaSeleccionado
+          ? <div className="mt-3 border-t border-rr-gray100 pt-3"><p className="mb-2 text-xs font-semibold text-rr-gray500">{viajes.filter(v => v.fecha_programada === diaSeleccionado).length} viaje(s) programado(s)</p>{viajes.filter(v => v.fecha_programada === diaSeleccionado).map(v => <p key={v.id} className="mb-1 truncate text-xs text-rr-black"><span className="font-bold">{v.hora_programada?.slice(0,5) || '—'}</span> · {v.origen_calle} → {v.destino_calle}</p>)}</div>
+          : <p className="mt-3 border-t border-rr-gray100 pt-3 text-xs font-semibold text-rr-gray500">HOY {formatoHoy()}</p>
+        }
       </RRCard>
       <div className="mb-5 flex gap-2 rounded-rrMd bg-rr-gray100 p-1">
         {(["solicitados","aceptados"] as TripTab[]).map(tab => (
           <button key={tab} type="button" onClick={() => setActiveTab(tab)}
-            className={cx("flex-1 rounded-rrSm py-2 text-sm font-semibold transition-all",
-              activeTab === tab ? "bg-white text-rr-black shadow-sm" : "text-rr-gray500")}>
-            {tab === "solicitados" ? `Solicitados (${solicitados.length})` : `Aceptados (${aceptados.length})`}
+            className={cx("flex-1 rounded-rrSm py-2 text-sm font-bold uppercase tracking-wide transition-all",
+              activeTab === tab ? "bg-rr-secondary text-white" : "text-rr-gray500")}>
+            {tab === "solicitados" ? "Ofertas" : "Aceptados"}
           </button>
         ))}
       </div>
@@ -984,10 +1094,9 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
           {solicitados.length === 0
             ? <RRCard className="p-8 text-center"><Car className="h-10 w-10 text-rr-gray200 mx-auto mb-2" /><p className="text-sm text-rr-gray500">No hay viajes disponibles en este momento.</p><p className="text-xs text-rr-gray300 mt-1">Activa tu disponibilidad para recibir ofertas.</p></RRCard>
             : solicitados.map(viaje => (
-              <RRCard key={viaje.id}>
+              <TripCompactCard key={viaje.id} viaje={viaje} expanded={expandidoId === viaje.id} onToggle={() => toggleExpandido(viaje.id)}>
                 <div className="mb-3 flex items-start justify-between">
                   <RRBadge variant="pending">NUEVA OFERTA</RRBadge>
-                  <span className="text-xs text-rr-gray500">{viaje.folio}</span>
                 </div>
                 <div className="mb-4 flex gap-3">
                   <div className="flex flex-col items-center pt-1">
@@ -1019,7 +1128,7 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
                     Aceptar
                   </RRButton>
                 </div>
-              </RRCard>
+              </TripCompactCard>
             ))
           }
         </div>
@@ -1029,10 +1138,9 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
           {aceptados.length === 0
             ? <RRCard className="p-8 text-center"><Check className="h-10 w-10 text-rr-gray200 mx-auto mb-2" /><p className="text-sm text-rr-gray500">No tienes viajes aceptados activos.</p></RRCard>
             : aceptados.map(viaje => (
-              <RRCard key={viaje.id} className="border-l-4 border-rr-primary">
+              <TripCompactCard key={viaje.id} viaje={viaje} expanded={expandidoId === viaje.id} onToggle={() => toggleExpandido(viaje.id)} leftAccent="border-l-4 border-rr-primary">
                 <div className="mb-3 flex items-start justify-between">
                   <RRBadge variant="process">{viaje.status.toUpperCase()}</RRBadge>
-                  <span className="text-xs text-rr-gray500">{viaje.folio}</span>
                 </div>
                 <p className="mb-1 text-sm font-bold text-rr-black">{viaje.origen_calle} → {viaje.destino_calle}</p>
                 {viaje.vehiculos && <p className="mb-1 text-xs text-rr-gray500">{viaje.vehiculos.marca} {viaje.vehiculos.modelo} · {viaje.vehiculos.placas}</p>}
@@ -1040,7 +1148,6 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
                 {viaje.instrucciones && <p className="text-xs text-rr-black bg-rr-warningLight rounded-rrSm p-2 mt-2">{viaje.instrucciones}</p>}
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-rr-gray500"><span>{viaje.fecha_programada || 'Sin fecha'} {viaje.hora_programada?.slice(0,5) || ''}</span><span className="text-right">{viaje.tipos_servicio?.nombre || 'Traslado'}</span></div>
                 {viaje.destino_contacto && <p className="mt-1 text-xs text-rr-gray500">Entrega: {viaje.destino_contacto} {viaje.destino_telefono && `· ${viaje.destino_telefono}`}</p>}
-                <p className="text-sm font-bold text-rr-success mt-2">{formatMoney(viaje.pago_conductor)}</p>
                 <div className="mt-3 space-y-2">
                   {contarFotos(viaje) > 0 && <RRButton variant="secondary" fullWidth onClick={() => setEvidenceViewViaje(viaje)}><Eye className="h-4 w-4" /> Ver evidencia ({contarFotos(viaje)} fotos)</RRButton>}
                   {viaje.status === "Conductor en camino" && <RRButton variant="dark" fullWidth onClick={() => onCambiarStatus(viaje.id, "Recolección en proceso", "Llegada al origen")}>✓ Confirmé llegada al origen</RRButton>}
@@ -1051,7 +1158,7 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
                    {viaje.status === "Evidencia final pendiente" && <RRButton variant="primary" fullWidth onClick={() => onCerrar(viaje.id)}><Check className="h-4 w-4" /> Cerrar viaje</RRButton>}
                   <RRButton variant="secondary" fullWidth onClick={() => setIncidenciaViaje(viaje)}><TriangleAlert className="h-4 w-4" /> Reportar incidencia</RRButton>
                 </div>
-              </RRCard>
+              </TripCompactCard>
             ))
           }
         </div>

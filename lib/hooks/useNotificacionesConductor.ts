@@ -1,5 +1,5 @@
 // lib/hooks/useNotificacionesConductor.ts
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export interface NotificacionConductor {
@@ -14,8 +14,18 @@ export interface NotificacionConductor {
 // Centraliza la query + suscripción realtime a la tabla "notificaciones"
 // para que tanto la campana del header como la tarjeta del panel
 // muestren exactamente la misma información sin duplicar la lógica.
+//
+// OJO: supabase.channel(nombre) devuelve el MISMO canal si dos
+// instancias usan el mismo nombre — y si la primera ya hizo
+// .subscribe(), la segunda no puede agregarle más .on() (provoca
+// "cannot add postgres_changes callbacks ... after subscribe()").
+// Como el bell del header y la tarjeta del panel usan este hook al
+// mismo tiempo con el mismo conductorId, cada instancia necesita su
+// propio canal — por eso el nombre incluye un useId() único por
+// instancia del hook, no solo el conductorId.
 export function useNotificacionesConductor(conductorId: string | null) {
   const [notificaciones, setNotificaciones] = useState<NotificacionConductor[]>([])
+  const instanceId = useId()
 
   // cargar() solo trae datos y los devuelve — el setState vive en quien
   // la llama, para evitar el lint react-hooks/set-state-in-effect.
@@ -33,13 +43,13 @@ export function useNotificacionesConductor(conductorId: string | null) {
     if (!conductorId) return
     let activo = true
     cargar(conductorId).then(data => { if (activo) setNotificaciones(data) })
-    const channel = supabase.channel(`notificaciones-conductor-${conductorId}`)
+    const channel = supabase.channel(`notificaciones-conductor-${conductorId}-${instanceId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificaciones', filter: `destinatario_id=eq.${conductorId}` }, () => {
         cargar(conductorId).then(data => { if (activo) setNotificaciones(data) })
       })
       .subscribe()
     return () => { activo = false; void supabase.removeChannel(channel) }
-  }, [conductorId, cargar])
+  }, [conductorId, cargar, instanceId])
 
   const marcarLeida = async (id: string) => {
     await supabase.from('notificaciones').update({ leida: true }).eq('id', id)
