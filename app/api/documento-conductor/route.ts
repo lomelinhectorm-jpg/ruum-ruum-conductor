@@ -6,11 +6,45 @@ const TIPOS_DOCUMENTO: Record<string, string> = {
   Licencia: 'Licencia de conducir',
   'INE / Pasaporte': 'Identificación oficial',
   'Comprobante domicilio': 'Comprobante de domicilio',
+  'Constancia fiscal': 'Constancia de situación fiscal',
+  'Foto perfil': 'Fotografía de perfil',
+  Otro: 'Otro documento',
 }
-const NOMBRES_PERMITIDOS = new Set(['licencia-frente', 'licencia-reverso', 'ine-frente', 'comprobante-domicilio'])
+const NOMBRES_PERMITIDOS = new Set([
+  'licencia-frente', 'licencia-reverso', 'ine-frente',
+  'comprobante-domicilio', 'constancia-fiscal', 'otro-documento',
+  'foto-perfil',
+])
 
 function response(error: string, status: number) {
   return NextResponse.json({ error }, { status })
+}
+
+export async function GET(request: Request) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !serviceRoleKey) return response('Configuración incompleta.', 500)
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+  if (!token) return response('No autenticado.', 401)
+  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  const { data: { user } } = await admin.auth.getUser(token)
+  if (!user) return response('Sesión inválida.', 401)
+  const { data: conductor } = await admin.from('conductores').select('id').eq('auth_id', user.id).maybeSingle()
+  if (!conductor) return response('Perfil de conductor no encontrado.', 404)
+  const pathSolicitado = new URL(request.url).searchParams.get('path')
+  const query = admin.from('documentos')
+    .select('id, tipo_doc, folio, fecha_vencimiento, estatus, archivo_url, created_at')
+    .eq('entidad_tipo', 'Conductor').eq('entidad_id', conductor.id)
+  const { data: documentos, error: docsError } = pathSolicitado
+    ? await query.eq('archivo_url', pathSolicitado).limit(1)
+    : await query.order('created_at', { ascending: false })
+  if (docsError) return response(docsError.message, 500)
+  if (pathSolicitado && !documentos?.length) return response('Documento no encontrado.', 404)
+  const firmados = await Promise.all((documentos ?? []).map(async doc => {
+    const { data } = await admin.storage.from('documentos').createSignedUrl(doc.archivo_url, 3600)
+    return { ...doc, signed_url: data?.signedUrl ?? null }
+  }))
+  return NextResponse.json(pathSolicitado ? { url: firmados[0]?.signed_url ?? null } : { documentos: firmados })
 }
 
 export async function POST(request: Request) {

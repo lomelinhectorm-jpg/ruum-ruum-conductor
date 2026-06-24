@@ -33,12 +33,52 @@ export async function verificarOTPConductor(telefono: string, token: string) {
 // "Pendiente de validación" puede no tener fila aún, y eso no debe
 // lanzar una excepción.
 export async function getMiPerfilConductor(authId: string) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('conductores')
-    .select('id, nombre, apellido, telefono, disponibilidad, calificacion, viajes_realizados, ganancias_total, certificacion')
+    .select(`
+      id, nombre, apellido, email, telefono, curp, foto_url,
+      domicilio_calle, domicilio_numero, domicilio_colonia, domicilio_cp,
+      municipio, estado_geo, disponibilidad, certificacion, calificacion,
+      viajes_realizados, ganancias_total, cuenta_banco, cuenta_clabe, cuenta_titular
+    `)
     .eq('auth_id', authId)
     .maybeSingle()
 
+  if (error) throw error
+  return data
+}
+
+export type CamposPerfilConductor = Partial<{
+  nombre: string
+  apellido: string
+  telefono: string
+  curp: string | null
+  foto_url: string | null
+  domicilio_calle: string | null
+  domicilio_numero: string | null
+  domicilio_colonia: string | null
+  domicilio_cp: string | null
+  municipio: string | null
+  estado_geo: string | null
+  cuenta_banco: string | null
+  cuenta_clabe: string | null
+  cuenta_titular: string | null
+}>
+
+export async function actualizarPerfilConductor(conductorId: string, datos: CamposPerfilConductor) {
+  const { data, error } = await supabase
+    .from('conductores')
+    .update(datos)
+    .eq('id', conductorId)
+    .select(`
+      id, nombre, apellido, email, telefono, curp, foto_url,
+      domicilio_calle, domicilio_numero, domicilio_colonia, domicilio_cp,
+      municipio, estado_geo, disponibilidad, certificacion, calificacion,
+      viajes_realizados, ganancias_total, cuenta_banco, cuenta_clabe, cuenta_titular
+    `)
+    .single()
+
+  if (error) throw error
   return data
 }
 
@@ -71,10 +111,11 @@ export async function getMisViajesConductor(conductorId: string) {
   const { data, error } = await supabase
     .from('viajes')
     .select(`
-      id, folio, status, fecha_programada, hora_programada,
-      origen_calle, origen_colonia, origen_estado, origen_contacto, origen_telefono,
-      destino_calle, destino_colonia, destino_estado, destino_contacto, destino_telefono,
-      instrucciones, pago_conductor, gastos_autorizados,
+      id, folio, status, fecha_programada, hora_programada, created_at, updated_at,
+      origen_calle, origen_numero, origen_colonia, origen_estado, origen_contacto, origen_telefono,
+      destino_calle, destino_numero, destino_colonia, destino_estado, destino_contacto, destino_telefono,
+      referencias, instrucciones, pago_conductor, gastos_autorizados, ajustes,
+      tipos_servicio(nombre, descripcion),
       vehiculos(marca, modelo, placas, transmision),
       usuarios(nombre, apellido),
       evidencias(
@@ -84,8 +125,7 @@ export async function getMisViajesConductor(conductorId: string) {
       )
     `)
     .eq('conductor_id', conductorId)
-    .not('status', 'in', '("Finalizado","Cancelado")')
-    .order('created_at', { ascending: false })
+    .order('fecha_programada', { ascending: false, nullsFirst: false })
 
   if (error) throw error
   return data
@@ -220,6 +260,108 @@ export async function getMisGanancias(conductorId: string) {
 
   if (error) throw error
   return data
+}
+
+export async function getMisGastos(conductorId: string) {
+  const { data, error } = await supabase
+    .from('gastos')
+    .select('id, viaje_id, concepto, monto, estatus, created_at, viajes(folio)')
+    .eq('conductor_id', conductorId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+// ── DOCUMENTOS ─────────────────────────────────────────────
+
+export async function getDocumentosConductor(conductorId: string) {
+  void conductorId
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Sesión no válida.')
+  const res = await fetch('/api/documento-conductor', { headers: { Authorization: `Bearer ${session.access_token}` } })
+  if (!res.ok) throw new Error('No se pudieron cargar los documentos.')
+  const data = await res.json() as { documentos: Record<string, unknown>[] }
+  return data.documentos
+}
+
+export async function getUrlDocumentoConductor(path: string) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Sesión no válida.')
+  const res = await fetch(`/api/documento-conductor?path=${encodeURIComponent(path)}`, { headers: { Authorization: `Bearer ${session.access_token}` } })
+  if (!res.ok) throw new Error('No se pudo abrir el documento.')
+  const data = await res.json() as { url: string | null }
+  return data.url
+}
+
+export async function subirDocumentoConductor(
+  file: File,
+  slot: 'licencia-frente' | 'licencia-reverso' | 'ine-frente' | 'comprobante-domicilio' | 'constancia-fiscal' | 'otro-documento' | 'foto-perfil',
+  tipoDoc: string,
+  folio = '',
+  vigencia = '',
+) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Sesión no válida.')
+
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('nombreArchivo', slot)
+  formData.append('tipoDoc', tipoDoc)
+  formData.append('folio', folio)
+  formData.append('vigencia', vigencia)
+
+  const res = await fetch('/api/documento-conductor', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${session.access_token}` },
+    body: formData,
+  })
+  if (!res.ok) {
+    const detalle = await res.json().catch(() => null) as { error?: string } | null
+    throw new Error(detalle?.error ?? 'No se pudo subir el documento.')
+  }
+  return res.json() as Promise<{ ok: true; path: string }>
+}
+
+// ── PREFERENCIAS Y SOPORTE ─────────────────────────────────
+
+export async function guardarPreferenciasConductor(preferencias: Record<string, unknown>) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Sesión no válida.')
+  const { data, error } = await supabase.auth.updateUser({
+    data: { ...user.user_metadata, preferencias_conductor: preferencias },
+  })
+  if (error) throw error
+  return data
+}
+
+export async function crearIncidenciaConductor(datos: { viajeId: string | null; tipo: string; descripcion: string }) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Sesión no válida.')
+  const res = await fetch('/api/crear-incidencia', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify(datos),
+  })
+  if (!res.ok) {
+    const detalle = await res.json().catch(() => null) as { error?: string } | null
+    throw new Error(detalle?.error ?? 'No se pudo registrar la incidencia.')
+  }
+  return res.json() as Promise<{ ok: true; id: string }>
+}
+
+export async function eliminarCuentaConductor() {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Sesión no válida.')
+  const res = await fetch('/api/eliminar-cuenta', {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  })
+  if (!res.ok) {
+    const detalle = await res.json().catch(() => null) as { error?: string } | null
+    throw new Error(detalle?.error ?? 'No se pudo eliminar la cuenta.')
+  }
+  await supabase.auth.signOut()
 }
 
 // ── REALTIME ────────────────────────────────────────────────

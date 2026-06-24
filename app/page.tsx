@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- previews use local blob URLs and private signed URLs */
 
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { supabase as sb } from "@/lib/supabase";
@@ -6,15 +7,18 @@ import type { EstatusViaje } from "@/lib/supabase";
 import {
   getMiPerfilConductor, updateDisponibilidad, getMisViajesConductor,
   aceptarViaje, rechazarViaje, cambiarStatusViaje, getMisGanancias,
-  cerrarViajeConductor, subirEvidencia, suscribirViajesAsignados,
+  cerrarViajeConductor, subirEvidencia, suscribirViajesAsignados, getMisGastos,
+  crearIncidenciaConductor,
 } from "@/lib/queries/conductor";
 import {
-  AlertCircle, Camera, Car, Check, ChevronRight,
+  AlertCircle, CalendarDays, Camera, Car, Check, ChevronLeft, ChevronRight,
   FileText, Fuel, Gauge, Home, Landmark, MapPin,
-  Settings, Star, User, Wallet, X, Loader,
-  Eye, EyeOff, Upload, Shield
+  Star, User, Wallet, X, Loader,
+  Eye, EyeOff, Upload, Shield, TriangleAlert
 } from "lucide-react";
 import NotificacionesBell from "@/components/NotificacionesBell";
+import DriverSettings from "@/components/DriverSettings";
+import { TIPOS_INCIDENCIA } from "@/lib/constants/incidencias";
 import {
   RRBadge,
   RRBottomNav,
@@ -36,7 +40,19 @@ interface ConductorPerfil {
   id: string
   nombre: string
   apellido: string
+  email: string
   telefono: string
+  curp?: string | null
+  foto_url?: string | null
+  domicilio_calle?: string | null
+  domicilio_numero?: string | null
+  domicilio_colonia?: string | null
+  domicilio_cp?: string | null
+  municipio?: string | null
+  estado_geo?: string | null
+  cuenta_banco?: string | null
+  cuenta_clabe?: string | null
+  cuenta_titular?: string | null
   disponibilidad: string
   calificacion: number
   viajes_realizados: number
@@ -50,19 +66,26 @@ interface ViajeDB {
   status: string
   fecha_programada: string | null
   hora_programada: string | null
+  created_at: string
+  updated_at: string
   origen_calle: string | null
+  origen_numero: string | null
   origen_colonia: string | null
   origen_estado: string | null
   origen_contacto: string | null
   origen_telefono: string | null
   destino_calle: string | null
+  destino_numero: string | null
   destino_colonia: string | null
   destino_estado: string | null
   destino_contacto: string | null
   destino_telefono: string | null
   instrucciones: string | null
+  referencias: string | null
   pago_conductor: number
   gastos_autorizados: number
+  ajustes: number
+  tipos_servicio: { nombre: string; descripcion: string | null } | null
   vehiculos: { marca: string; modelo: string; placas: string; transmision: string | null } | null
   usuarios: { nombre: string; apellido: string } | null
   evidencias: {
@@ -103,17 +126,29 @@ interface PagoResumen {
   viajes_revisados: number
   ganancias: number
   gastos_autorizados: number
+  gastos_reportados?: number
   ajustes: number
   deposito_esperado: number
   estatus: string
   fecha_pago: string | null
+  metodo_deposito?: string | null
+  notas?: string | null
+}
+
+interface GastoResumen {
+  id: string
+  viaje_id: string | null
+  concepto: string
+  monto: number
+  estatus: string
+  created_at: string
+  viajes: { folio: string | null } | null
 }
 
 const navItems = [
   { id: "panel" as View,         label: "Panel",     icon: Home },
   { id: "viajes" as View,        label: "Viajes",    icon: Car },
   { id: "ganancias" as View,     label: "Ganancias", icon: Wallet },
-  { id: "configuracion" as View, label: "Config.",   icon: Settings },
 ];
 
 function cx(...classes: (string | false | undefined)[]) {
@@ -779,16 +814,33 @@ function StatusBadge({ disponibilidad }: { disponibilidad: string }) {
 }
 
 // ─── PANEL VIEW ───────────────────────────────────────────────────────────────
-function PanelView({ conductor, viajes, onDisponibilidadChange, cargando }: {
-  conductor: ConductorPerfil | null; viajes: ViajeDB[]
+function inicioSemana(fecha = new Date()) {
+  const d = new Date(fecha); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - d.getDay()); return d
+}
+
+function fechaLocal(value: string | null) {
+  if (!value) return null
+  const [y, m, d] = value.split('-').map(Number)
+  return new Date(y, (m || 1) - 1, d || 1)
+}
+
+function PanelView({ conductor, viajes, pagos, onDisponibilidadChange, cargando }: {
+  conductor: ConductorPerfil | null; viajes: ViajeDB[]; pagos: PagoResumen[]
   onDisponibilidadChange: (d: string) => void; cargando: boolean
 }) {
-  const disponible = conductor?.disponibilidad === "Disponible"
+  const desde = inicioSemana(); const hasta = new Date(desde); hasta.setDate(hasta.getDate() + 7)
+  const viajesSemana = viajes.filter(v => { const f = fechaLocal(v.fecha_programada) ?? new Date(v.created_at); return f >= desde && f < hasta })
   const viajeActivo = viajes.find(v =>
     ["Conductor en camino","Recolección en proceso","Evidencia inicial pendiente",
      "Traslado en curso","Entrega en proceso"].includes(v.status))
-  const viajesCompletados = viajes.filter(v => v.status === "Finalizado").length
-  const gananciasSemana = viajes.filter(v => v.status !== "Cancelado").reduce((s, v) => s + (v.pago_conductor ?? 0), 0)
+  const viajesCompletados = viajesSemana.filter(v => v.status === "Finalizado").length
+  const viajesActivos = viajesSemana.filter(v => !["Conductor asignado", "Finalizado", "Cancelado"].includes(v.status)).length
+  const viajesPendientes = viajesSemana.filter(v => v.status === "Conductor asignado").length
+  const gananciasSemana = viajesSemana.filter(v => v.status !== "Cancelado").reduce((s, v) => s + (v.pago_conductor ?? 0), 0)
+  const proximoPago = pagos.find(p => p.estatus !== "Pagado") ?? pagos[0]
+  const fechaPago = proximoPago?.fecha_pago
+    ? new Date(`${proximoPago.fecha_pago}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
+    : "Por programar"
 
   return (
     <section className="rr-fade-in p-5 pb-24">
@@ -803,23 +855,20 @@ function PanelView({ conductor, viajes, onDisponibilidadChange, cargando }: {
           </div>
           {conductor && <StatusBadge disponibilidad={conductor.disponibilidad} />}
         </div>
-        <div className="flex items-center justify-between rounded-rrMd border border-rr-gray100 bg-rr-bg p-3">
-          <span className="text-sm font-semibold text-rr-gray700">Recibir nuevos viajes</span>
-          <label className="relative inline-flex cursor-pointer items-center">
-            <input type="checkbox" className="peer sr-only" checked={disponible}
-              onChange={e => onDisponibilidadChange(e.target.checked ? "Disponible" : "No disponible")} />
-            <span className="h-6 w-12 rounded-full bg-rr-gray300 transition-colors peer-checked:bg-rr-success" />
-            <span className="absolute left-0.5 h-5 w-5 rounded-full border-2 border-rr-gray300 bg-white transition-transform peer-checked:translate-x-6 peer-checked:border-rr-success" />
-          </label>
+        <div className="rounded-rrMd border border-rr-gray100 bg-rr-bg p-3">
+          <span className="mb-2 block text-sm font-semibold text-rr-gray700">Tu disponibilidad</span>
+          <div className="grid grid-cols-2 gap-2">
+            {["Disponible", "No disponible", "En viaje", "Pausado"].map(estado => <button key={estado} type="button" onClick={() => onDisponibilidadChange(estado)} className={cx("rounded-lg px-2 py-2 text-xs font-semibold", conductor?.disponibilidad === estado ? "bg-rr-secondary text-white" : "border border-rr-gray200 bg-white text-rr-gray500")}>{estado}</button>)}
+          </div>
         </div>
       </RRCard>
 
       <h3 className="mb-3 text-sm font-bold text-rr-gray700">Resumen de esta semana</h3>
-      <div className="mb-5 grid grid-cols-2 gap-3">
+      <div className="mb-3 grid grid-cols-2 gap-3">
         <RRStatCard
           label="Tus viajes"
-          value={cargando ? "—" : viajes.length}
-          helper={`${viajesCompletados} completados`}
+          value={cargando ? "—" : viajesSemana.length}
+          helper={`${viajesActivos} activos · ${viajesPendientes} pendientes`}
           icon={Car}
           tone="primary"
         />
@@ -830,6 +879,10 @@ function PanelView({ conductor, viajes, onDisponibilidadChange, cargando }: {
           icon={Wallet}
           tone="success"
         />
+      </div>
+      <div className="mb-5 grid grid-cols-2 gap-3">
+        <RRStatCard label="Vehículos trasladados" value={cargando ? "—" : viajesCompletados} helper="Esta semana" icon={Car} tone="primary" />
+        <RRStatCard label="Próximo depósito" value={cargando ? "—" : formatMoney(proximoPago?.deposito_esperado ?? 0)} helper={fechaPago} icon={Landmark} tone="success" />
       </div>
 
       {viajeActivo && (
@@ -857,6 +910,22 @@ function PanelView({ conductor, viajes, onDisponibilidadChange, cargando }: {
 }
 
 // ─── VIAJES VIEW ──────────────────────────────────────────────────────────────
+function IncidenciaModal({ viaje, onClose }: { viaje: ViajeDB; onClose: () => void }) {
+  const [tipo, setTipo] = useState('')
+  const [descripcion, setDescripcion] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState('')
+  const enviar = async () => {
+    if (!tipo) return setError('Selecciona el tipo de incidencia.')
+    if (descripcion.trim().length < 10) return setError('Describe lo ocurrido con al menos 10 caracteres.')
+    setEnviando(true); setError('')
+    try { await crearIncidenciaConductor({ viajeId: viaje.id, tipo, descripcion }); alert('Incidencia registrada. El equipo operativo dará seguimiento.'); onClose() }
+    catch (e) { setError(e instanceof Error ? e.message : 'No se pudo registrar la incidencia.') }
+    setEnviando(false)
+  }
+  return <div className="absolute inset-0 z-50 flex items-end bg-black/50"><div className="max-h-[90%] w-full overflow-y-auto rounded-t-3xl bg-white p-5"><div className="mb-4 flex items-start justify-between"><div><h3 className="font-bold text-rr-black">Reportar incidencia</h3><p className="text-xs text-rr-gray500">{viaje.folio} · {viaje.origen_calle} → {viaje.destino_calle}</p></div><button onClick={onClose}><X className="h-5 w-5" /></button></div><label className="mb-1 block text-xs font-semibold uppercase text-rr-gray500">Tipo</label><select value={tipo} onChange={e => setTipo(e.target.value)} className="mb-3 w-full rounded-xl border border-rr-gray200 p-3 text-sm"><option value="">Seleccionar...</option>{TIPOS_INCIDENCIA.map(t => <option key={t}>{t}</option>)}</select><label className="mb-1 block text-xs font-semibold uppercase text-rr-gray500">Descripción</label><textarea rows={5} value={descripcion} onChange={e => setDescripcion(e.target.value)} className="w-full rounded-xl border border-rr-gray200 p-3 text-sm" placeholder="Explica qué ocurrió y qué apoyo necesitas..." />{error && <p className="mt-2 text-xs font-medium text-red-500">{error}</p>}<RRButton className="mt-4" fullWidth onClick={enviar} disabled={enviando}><TriangleAlert className="h-4 w-4" />{enviando ? 'Enviando...' : 'Enviar reporte'}</RRButton></div></div>
+}
+
 function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, onCerrar, onRecargar, cargando }: {
   conductor: ConductorPerfil | null; viajes: ViajeDB[]
   onAceptar: (id: string) => Promise<void>
@@ -870,11 +939,17 @@ function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, 
   const [aceptando, setAceptando] = useState<string | null>(null)
   const [evidenceViaje, setEvidenceViaje] = useState<ViajeDB | null>(null)
   const [evidenceViewViaje, setEvidenceViewViaje] = useState<ViajeDB | null>(null)
+  const [incidenciaViaje, setIncidenciaViaje] = useState<ViajeDB | null>(null)
+  const [semana, setSemana] = useState(() => inicioSemana())
+  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null)
 
   const solicitados = viajes.filter(v => v.status === "Conductor asignado")
   const aceptados = viajes.filter(v =>
     ["Conductor en camino","Recolección en proceso","Evidencia inicial pendiente",
      "Traslado en curso","Entrega en proceso","Evidencia final pendiente"].includes(v.status))
+  const diasSemana = Array.from({ length: 7 }, (_, i) => { const d = new Date(semana); d.setDate(d.getDate() + i); return d })
+  const moverSemana = (cantidad: number) => setSemana(s => { const d = new Date(s); d.setDate(d.getDate() + cantidad * 7); return d })
+  const isoLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
   const handleAceptar = async (viaje: ViajeDB) => {
     setAceptando(viaje.id)
@@ -891,6 +966,11 @@ function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, 
   return (
     <section className="rr-fade-in p-5 pb-24">
       <h2 className="mb-4 text-xl font-bold text-rr-black">Tus viajes</h2>
+      <RRCard className="mb-5 p-4">
+        <div className="mb-3 flex items-center justify-between"><button onClick={() => moverSemana(-1)} className="rounded-full p-1.5 hover:bg-rr-gray100"><ChevronLeft className="h-4 w-4" /></button><div className="text-center"><p className="flex items-center justify-center gap-1 text-sm font-bold text-rr-black"><CalendarDays className="h-4 w-4" />Agenda semanal</p><p className="text-xs text-rr-gray500">{diasSemana[0].toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })} – {diasSemana[6].toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}</p></div><button onClick={() => moverSemana(1)} className="rounded-full p-1.5 hover:bg-rr-gray100"><ChevronRight className="h-4 w-4" /></button></div>
+        <div className="grid grid-cols-7 gap-1">{diasSemana.map(d => { const iso = isoLocal(d); const delDia = viajes.filter(v => v.fecha_programada === iso); const activo = diaSeleccionado === iso; return <button key={iso} onClick={() => setDiaSeleccionado(activo ? null : iso)} className={cx("rounded-xl py-2 text-center", activo ? "bg-rr-secondary text-white" : "bg-rr-gray100 text-rr-gray700")}><span className="block text-[10px] font-semibold uppercase">{d.toLocaleDateString('es-MX', { weekday: 'short' }).slice(0, 2)}</span><span className="block text-sm font-bold">{d.getDate()}</span><span className={cx("mx-auto mt-1 block h-1.5 w-1.5 rounded-full", delDia.length ? "bg-rr-primary" : "bg-transparent")} /></button> })}</div>
+        {diaSeleccionado && <div className="mt-3 border-t border-rr-gray100 pt-3"><p className="mb-2 text-xs font-semibold text-rr-gray500">{viajes.filter(v => v.fecha_programada === diaSeleccionado).length} viaje(s) programado(s)</p>{viajes.filter(v => v.fecha_programada === diaSeleccionado).map(v => <p key={v.id} className="mb-1 truncate text-xs text-rr-black"><span className="font-bold">{v.hora_programada?.slice(0,5) || '—'}</span> · {v.origen_calle} → {v.destino_calle}</p>)}</div>}
+      </RRCard>
       <div className="mb-5 flex gap-2 rounded-rrMd bg-rr-gray100 p-1">
         {(["solicitados","aceptados"] as TripTab[]).map(tab => (
           <button key={tab} type="button" onClick={() => setActiveTab(tab)}
@@ -925,8 +1005,10 @@ function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, 
                   </div>
                 </div>
                 <div className="mb-4 space-y-2 border-t border-rr-gray100 pt-3">
-                  {viaje.vehiculos && <div className="flex justify-between text-sm"><span className="text-rr-gray500">Vehículo:</span><span className="font-medium text-rr-black">{viaje.vehiculos.marca} {viaje.vehiculos.modelo} · {viaje.vehiculos.transmision ?? ""}</span></div>}
+                   {viaje.vehiculos && <div className="flex justify-between text-sm"><span className="text-rr-gray500">Vehículo:</span><span className="font-medium text-rr-black">{viaje.vehiculos.marca} {viaje.vehiculos.modelo} · {viaje.vehiculos.transmision ?? ""}</span></div>}
+                  <div className="flex justify-between gap-3 text-sm"><span className="text-rr-gray500">Servicio:</span><span className="text-right font-medium text-rr-black">{viaje.tipos_servicio?.nombre ?? "Traslado de vehículo"}</span></div>
                   {viaje.fecha_programada && <div className="flex justify-between text-sm"><span className="text-rr-gray500">Fecha:</span><span className="font-medium text-rr-black">{viaje.fecha_programada} {viaje.hora_programada ? `· ${viaje.hora_programada.slice(0,5)}` : ""}</span></div>}
+                  {viaje.instrucciones && <div className="rounded-lg bg-rr-warningLight p-2 text-xs"><span className="font-bold">Requisitos:</span> {viaje.instrucciones}</div>}
                   <div className="flex items-center justify-between pt-2">
                     <span className="text-sm font-bold text-rr-gray700">Tu ganancia estimada:</span>
                     <span className="text-xl font-bold text-rr-success">{formatMoney(viaje.pago_conductor)}</span>
@@ -958,6 +1040,8 @@ function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, 
                 {viaje.vehiculos && <p className="mb-1 text-xs text-rr-gray500">{viaje.vehiculos.marca} {viaje.vehiculos.modelo} · {viaje.vehiculos.placas}</p>}
                 {viaje.origen_contacto && <p className="text-xs text-rr-gray500 mb-1">Contacto: {viaje.origen_contacto} {viaje.origen_telefono && `· ${viaje.origen_telefono}`}</p>}
                 {viaje.instrucciones && <p className="text-xs text-rr-black bg-rr-warningLight rounded-rrSm p-2 mt-2">{viaje.instrucciones}</p>}
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-rr-gray500"><span>{viaje.fecha_programada || 'Sin fecha'} {viaje.hora_programada?.slice(0,5) || ''}</span><span className="text-right">{viaje.tipos_servicio?.nombre || 'Traslado'}</span></div>
+                {viaje.destino_contacto && <p className="mt-1 text-xs text-rr-gray500">Entrega: {viaje.destino_contacto} {viaje.destino_telefono && `· ${viaje.destino_telefono}`}</p>}
                 <p className="text-sm font-bold text-rr-success mt-2">{formatMoney(viaje.pago_conductor)}</p>
                 <div className="mt-3 space-y-2">
                   {contarFotos(viaje) > 0 && <RRButton variant="secondary" fullWidth onClick={() => setEvidenceViewViaje(viaje)}><Eye className="h-4 w-4" /> Ver evidencia ({contarFotos(viaje)} fotos)</RRButton>}
@@ -966,7 +1050,8 @@ function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, 
                   {viaje.status === "Evidencia inicial pendiente" && <RRButton variant="dark" fullWidth onClick={() => onCambiarStatus(viaje.id, "Traslado en curso", "Traslado iniciado")}>🚗 Iniciar traslado</RRButton>}
                   {viaje.status === "Traslado en curso" && <RRButton variant="dark" fullWidth onClick={() => onCambiarStatus(viaje.id, "Entrega en proceso", "Llegada al destino")}>✓ Llegué al destino</RRButton>}
                   {viaje.status === "Entrega en proceso" && <RRButton variant="dark" fullWidth onClick={() => setEvidenceViaje(viaje)}><Camera className="h-4 w-4" /> Cargar Evidencia Final</RRButton>}
-                  {viaje.status === "Evidencia final pendiente" && <RRButton variant="primary" fullWidth onClick={() => onCerrar(viaje.id)}><Check className="h-4 w-4" /> Cerrar viaje</RRButton>}
+                   {viaje.status === "Evidencia final pendiente" && <RRButton variant="primary" fullWidth onClick={() => onCerrar(viaje.id)}><Check className="h-4 w-4" /> Cerrar viaje</RRButton>}
+                  <RRButton variant="secondary" fullWidth onClick={() => setIncidenciaViaje(viaje)}><TriangleAlert className="h-4 w-4" /> Reportar incidencia</RRButton>
                 </div>
               </RRCard>
             ))
@@ -1006,13 +1091,25 @@ function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, 
         />
       )}
       {evidenceViewViaje && <EvidenceViewerModal viaje={evidenceViewViaje} onClose={() => setEvidenceViewViaje(null)} />}
+      {incidenciaViaje && <IncidenciaModal viaje={incidenciaViaje} onClose={() => setIncidenciaViaje(null)} />}
     </section>
   );
 }
 
 // ─── GANANCIAS VIEW ───────────────────────────────────────────────────────────
-function GananciasView({ conductor, pagos, cargando }: { conductor: ConductorPerfil | null; pagos: PagoResumen[]; cargando: boolean }) {
+function GananciasView({ conductor, pagos, viajes, gastos, cargando }: { conductor: ConductorPerfil | null; pagos: PagoResumen[]; viajes: ViajeDB[]; gastos: GastoResumen[]; cargando: boolean }) {
   const pagoEstilo: Record<string, string> = { Pagado: "text-rr-success", Pendiente: "text-rr-warning", "En revisión": "text-rr-primary", Rechazado: "text-rr-danger" }
+  const [pagoAbierto, setPagoAbierto] = useState<string | null>(null)
+  const viajesEconomicos = viajes.filter(v => ["Finalizado", "Cancelado", "En revisión por incidencia"].includes(v.status))
+  const ultimoPagoPagado = pagos.find(p => p.estatus === 'Pagado')
+  const estatusViaje = (v: ViajeDB) => {
+    if (v.status === 'Cancelado') return 'Revocado'
+    if (v.status === 'En revisión por incidencia') return 'En revisión'
+    if ((v.ajustes ?? 0) !== 0) return 'Ajustado'
+    if (ultimoPagoPagado?.fecha_pago && (v.fecha_programada ?? '') <= ultimoPagoPagado.fecha_pago) return 'Pagado'
+    return 'Pendiente'
+  }
+  const estiloViaje: Record<string, "success" | "pending" | "danger" | "process" | "neutral"> = { Pagado: 'success', Pendiente: 'pending', Revocado: 'danger', 'En revisión': 'process', Ajustado: 'neutral' }
   return (
     <section className="rr-fade-in p-5 pb-24">
       <h2 className="mb-4 text-xl font-bold text-rr-black">Mis ganancias</h2>
@@ -1024,54 +1121,18 @@ function GananciasView({ conductor, pagos, cargando }: { conductor: ConductorPer
           <div><p className="text-xs text-white/60">Calificación</p><p className="text-sm font-semibold text-rr-warning">★ {conductor?.calificacion?.toFixed(1) ?? "—"}</p></div>
         </div>
       </RRCard>
-      <h3 className="mb-3 text-sm font-bold text-rr-gray700">Historial de pagos</h3>
+      <h3 className="mb-3 text-sm font-bold text-rr-gray700">Pagos recibidos por semana</h3>
       {cargando ? <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-16 animate-pulse bg-rr-gray100 rounded-rrLg" />)}</div>
         : pagos.length === 0 ? <RRCard className="p-8 text-center"><p className="text-sm text-rr-gray500">Sin registros de pago aún.</p></RRCard>
         : <div className="space-y-3">{pagos.map(pago => (
-            <RRCard key={pago.id} className="flex items-center justify-between p-4">
-              <div><p className="text-sm font-semibold text-rr-black">{pago.periodo}</p><p className="text-xs text-rr-gray500">{pago.viajes_revisados} viajes · {pago.fecha_pago ?? "Pendiente"}</p></div>
-              <div className="text-right"><p className="text-base font-bold text-rr-black">{formatMoney(pago.deposito_esperado)}</p><p className={`text-xs font-semibold ${pagoEstilo[pago.estatus] ?? "text-rr-gray500"}`}>{pago.estatus}</p></div>
+            <RRCard key={pago.id} className="p-4">
+              <button className="flex w-full items-center justify-between text-left" onClick={() => setPagoAbierto(pagoAbierto === pago.id ? null : pago.id)}><div><p className="text-sm font-semibold text-rr-black">{pago.periodo}</p><p className="text-xs text-rr-gray500">{pago.viajes_revisados} viajes · {pago.fecha_pago ?? "Fecha por confirmar"}</p></div><div className="text-right"><p className="text-base font-bold text-rr-black">{formatMoney(pago.deposito_esperado)}</p><p className={`text-xs font-semibold ${pagoEstilo[pago.estatus] ?? "text-rr-gray500"}`}>{pago.estatus}</p></div></button>
+              {pagoAbierto === pago.id && <div className="mt-4 space-y-2 border-t border-rr-gray100 pt-3 text-xs"><div className="flex justify-between"><span className="text-rr-gray500">Ganancias generadas</span><b>{formatMoney(pago.ganancias)}</b></div><div className="flex justify-between"><span className="text-rr-gray500">Gastos registrados</span><b>{formatMoney(pago.gastos_reportados ?? 0)}</b></div><div className="flex justify-between"><span className="text-rr-gray500">Gastos autorizados</span><b className="text-rr-success">+{formatMoney(pago.gastos_autorizados)}</b></div><div className="flex justify-between"><span className="text-rr-gray500">Ajustes o retenciones</span><b className={pago.ajustes < 0 ? 'text-red-500' : ''}>{formatMoney(pago.ajustes)}</b></div><div className="flex justify-between border-t border-rr-gray100 pt-2 text-sm"><span className="font-bold">Depósito final</span><b>{formatMoney(pago.deposito_esperado)}</b></div><div className="flex justify-between"><span className="text-rr-gray500">Cuenta de depósito</span><b>{pago.metodo_deposito || (conductor?.cuenta_clabe ? `${conductor.cuenta_banco || 'Cuenta'} •••• ${conductor.cuenta_clabe.slice(-4)}` : 'Sin cuenta registrada')}</b></div>{pago.notas && <p className="rounded-lg bg-rr-gray100 p-2 text-rr-gray700">{pago.notas}</p>}</div>}
             </RRCard>
           ))}</div>
       }
-    </section>
-  );
-}
-
-// ─── SETTINGS VIEW ────────────────────────────────────────────────────────────
-function SettingsView({ conductor, onBack }: { conductor: ConductorPerfil | null; onBack: () => void }) {
-  return (
-    <section className="rr-fade-in p-5 pb-24">
-      <div className="mb-5 flex items-center gap-3">
-        <button type="button" onClick={onBack} className="text-rr-gray500 hover:text-rr-black">← Volver</button>
-        <h2 className="text-xl font-bold text-rr-black">Mi perfil</h2>
-      </div>
-      {conductor && (
-        <RRCard className="mb-5 p-5 text-center">
-          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-rr-primary text-rr-secondary text-2xl font-bold">
-            {conductor.nombre[0]}{conductor.apellido[0]}
-          </div>
-          <h3 className="text-lg font-bold text-rr-black">{conductor.nombre} {conductor.apellido}</h3>
-          <p className="text-sm text-rr-gray500">{conductor.telefono}</p>
-          <div className="flex justify-center gap-4 mt-3">
-            <div className="text-center"><p className="text-lg font-bold text-rr-black">{conductor.viajes_realizados}</p><p className="text-xs text-rr-gray500">Viajes</p></div>
-            <div className="text-center"><p className="text-lg font-bold text-rr-warning">★ {conductor.calificacion.toFixed(1)}</p><p className="text-xs text-rr-gray500">Calificación</p></div>
-          </div>
-        </RRCard>
-      )}
-      <div className="space-y-2">
-        {[
-          { icon: FileText, label: "Mis documentos", sub: "Licencia, INE, CSF" },
-          { icon: Landmark, label: "Cuenta bancaria", sub: "CLABE y banco" },
-          { icon: MapPin, label: "Mi ubicación", sub: "Municipio y estado" },
-        ].map(item => (
-          <RRCard key={item.label} className="flex items-center gap-3 p-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-rrSm bg-rr-gray100 text-rr-gray700"><item.icon className="h-4 w-4" /></div>
-            <div className="flex-1"><p className="text-sm font-semibold text-rr-black">{item.label}</p><p className="text-xs text-rr-gray500">{item.sub}</p></div>
-            <ChevronRight className="h-4 w-4 text-rr-gray300" />
-          </RRCard>
-        ))}
-      </div>
+      <h3 className="mb-3 mt-6 text-sm font-bold text-rr-gray700">Estatus económico por viaje</h3>
+      <div className="space-y-3">{viajesEconomicos.length === 0 ? <RRCard className="p-6 text-center text-sm text-rr-gray500">Aún no hay viajes conciliados.</RRCard> : viajesEconomicos.map(v => { const estado = estatusViaje(v); return <RRCard key={v.id} className="p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-bold text-rr-black">{v.origen_calle || 'Origen'} → {v.destino_calle || 'Destino'}</p><p className="mt-1 text-xs text-rr-gray500">{v.fecha_programada || 'Sin fecha'} · {v.folio || v.id.slice(0, 8)}</p></div><RRBadge variant={estiloViaje[estado]}>{estado}</RRBadge></div><div className="mt-3 grid grid-cols-2 gap-2 border-t border-rr-gray100 pt-3 text-xs"><div><p className="text-rr-gray500">Monto generado</p><p className="font-bold">{formatMoney(v.pago_conductor)}</p></div><div><p className="text-rr-gray500">Gastos autorizados</p><p className="font-bold">{formatMoney(v.gastos_autorizados)}</p></div><div><p className="text-rr-gray500">Ajustes</p><p className="font-bold">{formatMoney(v.ajustes ?? 0)}</p></div><div><p className="text-rr-gray500">Liberación estimada</p><p className="font-bold">{estado === 'Pagado' ? ultimoPagoPagado?.fecha_pago : pagos.find(p => p.estatus === 'Pendiente')?.fecha_pago ?? 'Por confirmar'}</p></div></div>{gastos.filter(g => g.viaje_id === v.id).map(g => <p key={g.id} className="mt-2 rounded-lg bg-rr-gray100 p-2 text-xs text-rr-gray700">{g.concepto}: {formatMoney(g.monto)} · {g.estatus}</p>)}</RRCard> })}</div>
     </section>
   );
 }
@@ -1113,7 +1174,6 @@ function EvidenceViewerModal({ viaje, onClose }: { viaje: ViajeDB; onClose: () =
             <a key={foto.key} href={urls[foto.key]} target="_blank" rel="noreferrer"
               className="aspect-square overflow-hidden rounded-rrMd border border-rr-gray200 bg-rr-gray100 relative">
               {urls[foto.key] ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img src={urls[foto.key]} alt={foto.label} className="h-full w-full object-cover" />
               ) : <div className="h-full w-full animate-pulse bg-rr-gray100" />}
               <span className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-center text-[10px] font-medium text-white">{foto.label}</span>
@@ -1299,6 +1359,7 @@ export default function DriverApp() {
   const [conductor, setConductor] = useState<ConductorPerfil | null>(null);
   const [viajes, setViajes] = useState<ViajeDB[]>([]);
   const [pagos, setPagos] = useState<PagoResumen[]>([]);
+  const [gastos, setGastos] = useState<GastoResumen[]>([]);
   const [cargando, setCargando] = useState(true);
   const mainRef = useRef<HTMLElement>(null);
 
@@ -1355,6 +1416,7 @@ export default function DriverApp() {
         setConductor(null)
         setViajes([])
         setPagos([])
+        setGastos([])
         setOnboardingDone(false)
         localStorage.removeItem("ruum_conductor_onboarding")
       }
@@ -1383,6 +1445,12 @@ export default function DriverApp() {
     }
   }, [conductor])
 
+  const cargarGastos = useCallback(async () => {
+    if (!conductor) return
+    try { setGastos(await getMisGastos(conductor.id) as unknown as GastoResumen[]) }
+    catch (e) { console.error("Error cargando gastos:", e) }
+  }, [conductor])
+
   useEffect(() => {
     if (!conductorAuthId) return
     let activo = true
@@ -1398,10 +1466,12 @@ export default function DriverApp() {
     Promise.all([
       getMisViajesConductor(conductor.id),
       getMisGanancias(conductor.id),
-    ]).then(([viajesData, pagosData]) => {
+      getMisGastos(conductor.id).catch(() => []),
+    ]).then(([viajesData, pagosData, gastosData]) => {
       if (!activo) return
       setViajes(viajesData as unknown as ViajeDB[])
       setPagos(pagosData as PagoResumen[])
+      setGastos(gastosData as unknown as GastoResumen[])
     }).catch(e => {
       console.error("Error cargando panel del conductor:", e)
     }).finally(() => {
@@ -1457,7 +1527,7 @@ export default function DriverApp() {
     const nombre = `${conductor.nombre} ${conductor.apellido}`
     try {
       await cerrarViajeConductor(viajeId, conductor.id, nombre)
-      await Promise.all([cargarConductor(), cargarViajes(), cargarPagos()])
+      await Promise.all([cargarConductor(), cargarViajes(), cargarPagos(), cargarGastos()])
     } catch (e) {
       console.error("Error cerrando viaje:", e)
       alert("No se pudo cerrar el viaje. Verifica que la evidencia final esté registrada.")
@@ -1609,10 +1679,10 @@ export default function DriverApp() {
       <div className="mobile-mockup flex flex-col relative">
         <Header onOpenSettings={() => showView("configuracion")} conductor={conductor} />
         <main ref={mainRef} className="no-scrollbar relative flex-1 overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#EDF4FF_100%)]">
-          {activeView === "panel" && <PanelView conductor={conductor} viajes={viajes} onDisponibilidadChange={handleDisponibilidadChange} cargando={cargando} />}
+          {activeView === "panel" && <PanelView conductor={conductor} viajes={viajes} pagos={pagos} onDisponibilidadChange={handleDisponibilidadChange} cargando={cargando} />}
           {activeView === "viajes" && <VijesView conductor={conductor} viajes={viajes} onAceptar={handleAceptar} onRechazar={handleRechazarViaje} onCambiarStatus={handleCambiarStatus} onCerrar={handleCerrarViaje} onRecargar={cargarViajes} cargando={cargando} />}
-          {activeView === "ganancias" && <GananciasView conductor={conductor} pagos={pagos} cargando={cargando} />}
-          {activeView === "configuracion" && <SettingsView conductor={conductor} onBack={() => showView("panel")} />}
+          {activeView === "ganancias" && <GananciasView conductor={conductor} pagos={pagos} viajes={viajes} gastos={gastos} cargando={cargando} />}
+          {activeView === "configuracion" && <DriverSettings conductor={conductor} viajes={viajes} onBack={() => showView("panel")} onProfileUpdated={p => setConductor(p as ConductorPerfil)} />}
         </main>
         <BottomNavigation activeView={activeView} onChange={showView} />
       </div>
