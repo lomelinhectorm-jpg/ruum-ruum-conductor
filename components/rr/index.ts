@@ -8,3 +8,4 @@ export * from "./RRBottomNav";
 export * from "./RRTripCard";
 export * from "./RREvidenceGallery";
 export * from "./RRTimeline";
+export * from "./RRSwitch";

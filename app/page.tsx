@@ -11,12 +11,13 @@ import {
   crearIncidenciaConductor,
 } from "@/lib/queries/conductor";
 import {
-  AlertCircle, CalendarDays, Camera, Car, Check, ChevronLeft, ChevronRight,
+  CalendarDays, Camera, Car, Check, ChevronLeft, ChevronRight,
   FileText, Fuel, Gauge, Home, Landmark, MapPin,
   Star, User, Wallet, X, Loader,
   Eye, EyeOff, Upload, Shield, TriangleAlert
 } from "lucide-react";
 import NotificacionesBell from "@/components/NotificacionesBell";
+import NotificacionesCard from "@/components/NotificacionesCard";
 import DriverSettings from "@/components/DriverSettings";
 import { TIPOS_INCIDENCIA } from "@/lib/constants/incidencias";
 import {
@@ -26,7 +27,9 @@ import {
   RRCard,
   RREvidenceGallery,
   RRStatCard,
+  RRSwitch,
   RRTimeline,
+  RRTripCard,
 } from "@/components/rr";
 import { formatMoney } from "@/lib/design-system/utils";
 
@@ -804,15 +807,6 @@ function Header({ onOpenSettings, conductor }: {
   );
 }
 
-function StatusBadge({ disponibilidad }: { disponibilidad: string }) {
-  const activo = disponibilidad === "Disponible"
-  return (
-    <RRBadge variant={activo ? "success" : "neutral"} pulse={activo}>
-      {disponibilidad}
-    </RRBadge>
-  );
-}
-
 // ─── PANEL VIEW ───────────────────────────────────────────────────────────────
 function inicioSemana(fecha = new Date()) {
   const d = new Date(fecha); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - d.getDay()); return d
@@ -824,9 +818,9 @@ function fechaLocal(value: string | null) {
   return new Date(y, (m || 1) - 1, d || 1)
 }
 
-function PanelView({ conductor, viajes, pagos, onDisponibilidadChange, cargando }: {
+function PanelView({ conductor, viajes, pagos, onDisponibilidadChange, onVerViajeActivo, cargando }: {
   conductor: ConductorPerfil | null; viajes: ViajeDB[]; pagos: PagoResumen[]
-  onDisponibilidadChange: (d: string) => void; cargando: boolean
+  onDisponibilidadChange: (d: string) => void; onVerViajeActivo: () => void; cargando: boolean
 }) {
   const desde = inicioSemana(); const hasta = new Date(desde); hasta.setDate(hasta.getDate() + 7)
   const viajesSemana = viajes.filter(v => { const f = fechaLocal(v.fecha_programada) ?? new Date(v.created_at); return f >= desde && f < hasta })
@@ -841,27 +835,49 @@ function PanelView({ conductor, viajes, pagos, onDisponibilidadChange, cargando 
   const fechaPago = proximoPago?.fecha_pago
     ? new Date(`${proximoPago.fecha_pago}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
     : "Por programar"
+  const disponible = conductor?.disponibilidad === "Disponible"
 
   return (
     <section className="rr-fade-in p-5 pb-24">
       <RRCard className="mb-5 p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            {cargando
-              ? <div className="h-5 w-32 animate-pulse bg-rr-gray100 rounded mb-1" />
-              : <h2 className="text-lg font-bold text-rr-black">Hola, {conductor?.nombre ?? "Conductor"}</h2>
-            }
-            <p className="text-sm text-rr-gray500">Que tengas un excelente día de trabajo.</p>
-          </div>
-          {conductor && <StatusBadge disponibilidad={conductor.disponibilidad} />}
+        <div className="mb-3">
+          {cargando
+            ? <div className="h-5 w-32 animate-pulse bg-rr-gray100 rounded mb-1" />
+            : <h2 className="text-lg font-bold text-rr-black">Hola, {conductor?.nombre ?? "Conductor"}</h2>
+          }
+          <p className="text-sm text-rr-gray500">Que tengas un excelente día de trabajo.</p>
         </div>
-        <div className="rounded-rrMd border border-rr-gray100 bg-rr-bg p-3">
-          <span className="mb-2 block text-sm font-semibold text-rr-gray700">Tu disponibilidad</span>
-          <div className="grid grid-cols-2 gap-2">
-            {["Disponible", "No disponible", "En viaje", "Pausado"].map(estado => <button key={estado} type="button" onClick={() => onDisponibilidadChange(estado)} className={cx("rounded-lg px-2 py-2 text-xs font-semibold", conductor?.disponibilidad === estado ? "bg-rr-secondary text-white" : "border border-rr-gray200 bg-white text-rr-gray500")}>{estado}</button>)}
+        <div className="flex items-center justify-between gap-3 rounded-rrMd border border-rr-gray100 bg-rr-bg p-3">
+          <div>
+            <span className="block text-sm font-semibold text-rr-gray700">Disponibilidad</span>
+            <span className={cx("text-xs font-medium", disponible ? "text-rr-success" : "text-rr-gray500")}>
+              {disponible ? "Recibiendo solicitudes de viaje" : "No disponible"}
+            </span>
           </div>
+          <RRSwitch
+            checked={disponible}
+            onChange={activo => onDisponibilidadChange(activo ? "Disponible" : "No disponible")}
+            label="Disponibilidad para recibir viajes"
+          />
         </div>
       </RRCard>
+
+      {viajeActivo && (
+        <div className="mb-5">
+          <h3 className="mb-3 text-sm font-bold text-rr-gray700">Viaje en curso</h3>
+          <RRTripCard
+            folio={viajeActivo.folio ?? undefined}
+            status={viajeActivo.status.toUpperCase()}
+            origin={[viajeActivo.origen_calle, viajeActivo.origen_colonia].filter(Boolean).join(", ") || "Origen"}
+            destination={[viajeActivo.destino_calle, viajeActivo.destino_colonia].filter(Boolean).join(", ") || "Destino"}
+            vehicle={viajeActivo.vehiculos ? `${viajeActivo.vehiculos.marca} ${viajeActivo.vehiculos.modelo} · ${viajeActivo.vehiculos.placas}` : "Vehículo por confirmar"}
+            amount={viajeActivo.pago_conductor}
+            variant="active"
+            primaryActionLabel="Ver viaje"
+            onPrimaryAction={onVerViajeActivo}
+          />
+        </div>
+      )}
 
       <h3 className="mb-3 text-sm font-bold text-rr-gray700">Resumen de esta semana</h3>
       <div className="mb-3 grid grid-cols-2 gap-3">
@@ -885,26 +901,8 @@ function PanelView({ conductor, viajes, pagos, onDisponibilidadChange, cargando 
         <RRStatCard label="Próximo depósito" value={cargando ? "—" : formatMoney(proximoPago?.deposito_esperado ?? 0)} helper={fechaPago} icon={Landmark} tone="success" />
       </div>
 
-      {viajeActivo && (
-        <RRCard className="mb-5 border-l-4 border-rr-primary p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <RRBadge variant="process">{viajeActivo.status.toUpperCase()}</RRBadge>
-            <span className="text-xs text-rr-gray500">{viajeActivo.folio}</span>
-          </div>
-          <p className="mb-1 text-sm font-bold text-rr-black">{viajeActivo.origen_calle} → {viajeActivo.destino_calle}</p>
-          {viajeActivo.vehiculos && <p className="text-xs text-rr-gray500">{viajeActivo.vehiculos.marca} {viajeActivo.vehiculos.modelo} · {viajeActivo.vehiculos.placas}</p>}
-          <p className="mt-2 text-sm font-bold text-rr-success">{formatMoney(viajeActivo.pago_conductor)}</p>
-        </RRCard>
-      )}
-
-      <h3 className="mb-3 text-sm font-bold text-rr-gray700">Avisos importantes</h3>
-      <div className="flex gap-3 rounded-rrLg border border-rr-warningLight bg-rr-warningLight p-3">
-        <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-rr-warning" />
-        <div>
-          <p className="text-sm font-semibold text-rr-black">Mantén tus documentos al día</p>
-          <p className="mt-1 text-xs text-rr-gray700">Verifica tus documentos en Configuración para operar sin interrupciones.</p>
-        </div>
-      </div>
+      <h3 className="mb-3 text-sm font-bold text-rr-gray700">Notificaciones</h3>
+      <NotificacionesCard conductorId={conductor?.id ?? null} />
     </section>
   );
 }
@@ -926,8 +924,8 @@ function IncidenciaModal({ viaje, onClose }: { viaje: ViajeDB; onClose: () => vo
   return <div className="absolute inset-0 z-50 flex items-end bg-black/50"><div className="max-h-[90%] w-full overflow-y-auto rounded-t-3xl bg-white p-5"><div className="mb-4 flex items-start justify-between"><div><h3 className="font-bold text-rr-black">Reportar incidencia</h3><p className="text-xs text-rr-gray500">{viaje.folio} · {viaje.origen_calle} → {viaje.destino_calle}</p></div><button onClick={onClose}><X className="h-5 w-5" /></button></div><label className="mb-1 block text-xs font-semibold uppercase text-rr-gray500">Tipo</label><select value={tipo} onChange={e => setTipo(e.target.value)} className="mb-3 w-full rounded-xl border border-rr-gray200 p-3 text-sm"><option value="">Seleccionar...</option>{TIPOS_INCIDENCIA.map(t => <option key={t}>{t}</option>)}</select><label className="mb-1 block text-xs font-semibold uppercase text-rr-gray500">Descripción</label><textarea rows={5} value={descripcion} onChange={e => setDescripcion(e.target.value)} className="w-full rounded-xl border border-rr-gray200 p-3 text-sm" placeholder="Explica qué ocurrió y qué apoyo necesitas..." />{error && <p className="mt-2 text-xs font-medium text-red-500">{error}</p>}<RRButton className="mt-4" fullWidth onClick={enviar} disabled={enviando}><TriangleAlert className="h-4 w-4" />{enviando ? 'Enviando...' : 'Enviar reporte'}</RRButton></div></div>
 }
 
-function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, onCerrar, onRecargar, cargando }: {
-  conductor: ConductorPerfil | null; viajes: ViajeDB[]
+function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCambiarStatus, onCerrar, onRecargar, cargando }: {
+  conductor: ConductorPerfil | null; viajes: ViajeDB[]; initialTab?: TripTab
   onAceptar: (id: string) => Promise<void>
   onRechazar: (id: string) => Promise<void>
   onCambiarStatus: (id: string, status: EstatusViaje, evento: string) => Promise<void>
@@ -935,7 +933,7 @@ function VijesView({ conductor, viajes, onAceptar, onRechazar, onCambiarStatus, 
   onRecargar: () => Promise<void>
   cargando: boolean
 }) {
-  const [activeTab, setActiveTab] = useState<TripTab>("solicitados")
+  const [activeTab, setActiveTab] = useState<TripTab>(initialTab ?? "solicitados")
   const [aceptando, setAceptando] = useState<string | null>(null)
   const [evidenceViaje, setEvidenceViaje] = useState<ViajeDB | null>(null)
   const [evidenceViewViaje, setEvidenceViewViaje] = useState<ViajeDB | null>(null)
@@ -1356,6 +1354,7 @@ function BottomNavigation({ activeView, onChange }: { activeView: View; onChange
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function DriverApp() {
   const [activeView, setActiveView] = useState<View>("panel");
+  const [tripTabInicial, setTripTabInicial] = useState<TripTab>("solicitados");
   const [conductor, setConductor] = useState<ConductorPerfil | null>(null);
   const [viajes, setViajes] = useState<ViajeDB[]>([]);
   const [pagos, setPagos] = useState<PagoResumen[]>([]);
@@ -1488,6 +1487,14 @@ export default function DriverApp() {
   const showView = (view: View) => {
     setActiveView(view)
     mainRef.current?.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  // Navega a la pestaña de Viajes en la sub-pestaña indicada. La usa
+  // tanto la navegación inferior (siempre abre en "solicitados") como
+  // la tarjeta de "Viaje en curso" del panel (abre directo en "aceptados").
+  const irAViajes = (tab: TripTab = "solicitados") => {
+    setTripTabInicial(tab)
+    showView("viajes")
   }
 
   const handleDisponibilidadChange = async (disponibilidad: string) => {
@@ -1679,12 +1686,12 @@ export default function DriverApp() {
       <div className="mobile-mockup flex flex-col relative">
         <Header onOpenSettings={() => showView("configuracion")} conductor={conductor} />
         <main ref={mainRef} className="no-scrollbar relative flex-1 overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#EDF4FF_100%)]">
-          {activeView === "panel" && <PanelView conductor={conductor} viajes={viajes} pagos={pagos} onDisponibilidadChange={handleDisponibilidadChange} cargando={cargando} />}
-          {activeView === "viajes" && <VijesView conductor={conductor} viajes={viajes} onAceptar={handleAceptar} onRechazar={handleRechazarViaje} onCambiarStatus={handleCambiarStatus} onCerrar={handleCerrarViaje} onRecargar={cargarViajes} cargando={cargando} />}
+          {activeView === "panel" && <PanelView conductor={conductor} viajes={viajes} pagos={pagos} onDisponibilidadChange={handleDisponibilidadChange} onVerViajeActivo={() => irAViajes("aceptados")} cargando={cargando} />}
+          {activeView === "viajes" && <VijesView conductor={conductor} viajes={viajes} initialTab={tripTabInicial} onAceptar={handleAceptar} onRechazar={handleRechazarViaje} onCambiarStatus={handleCambiarStatus} onCerrar={handleCerrarViaje} onRecargar={cargarViajes} cargando={cargando} />}
           {activeView === "ganancias" && <GananciasView conductor={conductor} pagos={pagos} viajes={viajes} gastos={gastos} cargando={cargando} />}
           {activeView === "configuracion" && <DriverSettings conductor={conductor} viajes={viajes} onBack={() => showView("panel")} onProfileUpdated={p => setConductor(p as ConductorPerfil)} />}
         </main>
-        <BottomNavigation activeView={activeView} onChange={showView} />
+        <BottomNavigation activeView={activeView} onChange={v => v === "viajes" ? irAViajes("solicitados") : showView(v)} />
       </div>
     </div>
   );

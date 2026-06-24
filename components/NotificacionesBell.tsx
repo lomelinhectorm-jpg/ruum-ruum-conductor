@@ -1,47 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Bell } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
-
-interface Notificacion {
-  id: string
-  titulo: string
-  cuerpo: string
-  leida: boolean
-  created_at: string
-  viaje_id: string | null
-}
+import { useNotificacionesConductor } from '@/lib/hooks/useNotificacionesConductor'
 
 export default function NotificacionesBell({ conductorId }: { conductorId: string | null }) {
   const [abierto, setAbierto] = useState(false)
-  const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
   const ref = useRef<HTMLDivElement>(null)
-
-  // cargar() solo trae datos y los devuelve — el setState vive en el
-  // .then() de quien la llama. Llamarla directo en el efecto y dejar que
-  // ELLA haga el setState dispara react-hooks/set-state-in-effect.
-  const cargar = useCallback(async (id: string): Promise<Notificacion[]> => {
-    const { data } = await supabase.from('notificaciones')
-      .select('id,titulo,cuerpo,leida,created_at,viaje_id')
-      .eq('destinatario_tipo', 'conductor')
-      .eq('destinatario_id', id)
-      .order('created_at', { ascending: false })
-      .limit(30)
-    return (data as Notificacion[]) ?? []
-  }, [])
-
-  useEffect(() => {
-    if (!conductorId) return
-    let activo = true
-    cargar(conductorId).then(data => { if (activo) setNotificaciones(data) })
-    const channel = supabase.channel(`notificaciones-conductor-${conductorId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificaciones', filter: `destinatario_id=eq.${conductorId}` }, () => {
-        cargar(conductorId).then(data => { if (activo) setNotificaciones(data) })
-      })
-      .subscribe()
-    return () => { activo = false; void supabase.removeChannel(channel) }
-  }, [conductorId, cargar])
+  const { notificaciones, noLeidas, marcarLeida, marcarTodasLeidas } = useNotificacionesConductor(conductorId)
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -50,21 +16,6 @@ export default function NotificacionesBell({ conductorId }: { conductorId: strin
     document.addEventListener('mousedown', onClick)
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
-
-  const marcarLeida = async (id: string) => {
-    await supabase.from('notificaciones').update({ leida: true }).eq('id', id)
-    setNotificaciones(prev => prev.map(n => n.id === id ? { ...n, leida: true } : n))
-  }
-
-  const marcarTodasLeidas = async () => {
-    if (!conductorId) return
-    const sinLeer = notificaciones.filter(n => !n.leida)
-    if (sinLeer.length === 0) return
-    await supabase.from('notificaciones').update({ leida: true }).eq('destinatario_id', conductorId).in('id', sinLeer.map(n => n.id))
-    setNotificaciones(prev => prev.map(n => ({ ...n, leida: true })))
-  }
-
-  const noLeidas = notificaciones.filter(n => !n.leida).length
 
   return (
     <div className="relative" ref={ref}>
