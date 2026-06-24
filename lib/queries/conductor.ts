@@ -129,28 +129,29 @@ export async function rechazarViaje(viajeId: string, conductorNombre: string) {
   })
 }
 
+// Antes hacía un .update({ status }) directo: cualquier conductor con una
+// fila de viajes accesible podía mandar cualquier status, sin validar que
+// la transición tuviera sentido desde el estado actual. Ahora pasa por
+// avanzar_estado_viaje_conductor (ver
+// docs/sql/estados_viaje_transiciones_seguras.sql), que verifica que el
+// viaje sea de este conductor y que la transición esté permitida según
+// estados_viaje.siguientes para el estado actual.
 export async function cambiarStatusViaje(
   viajeId: string,
+  conductorId: string,
   status: EstatusViaje,
   conductorNombre: string,
   evento: string
 ) {
-  const { data, error } = await supabase
-    .from('viajes')
-    .update({ status })
-    .eq('id', viajeId)
-    .select()
-    .single()
-
-  if (error) throw error
-
-  await supabase.from('timeline_viaje').insert({
-    viaje_id: viajeId,
-    evento,
-    actor: conductorNombre,
-    actor_tipo: 'conductor',
+  const { data, error } = await supabase.rpc('avanzar_estado_viaje_conductor', {
+    p_viaje_id: viajeId,
+    p_conductor_id: conductorId,
+    p_actor_nombre: conductorNombre,
+    p_nuevo_estado: status,
+    p_evento: evento,
   })
 
+  if (error) throw error
   return data
 }
 

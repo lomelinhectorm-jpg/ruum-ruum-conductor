@@ -14,6 +14,7 @@ import {
   Settings, Star, User, Wallet, X, Loader,
   Eye, EyeOff, Upload, Shield
 } from "lucide-react";
+import NotificacionesBell from "@/components/NotificacionesBell";
 import {
   RRBadge,
   RRBottomNav,
@@ -758,6 +759,7 @@ function Header({ onOpenSettings, conductor }: {
             <span className="text-xs font-semibold text-white">{conductor.calificacion.toFixed(1)}</span>
           </div>
         )}
+        <NotificacionesBell conductorId={conductor?.id ?? null} />
         <button type="button" onClick={onOpenSettings}
           className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15">
           <User className="h-4 w-4" />
@@ -1444,8 +1446,9 @@ export default function DriverApp() {
   }
 
   const handleCambiarStatus = async (viajeId: string, status: EstatusViaje, evento: string) => {
-    const nombre = conductor ? `${conductor.nombre} ${conductor.apellido}` : "Conductor"
-    await cambiarStatusViaje(viajeId, status, nombre, evento)
+    if (!conductor) return
+    const nombre = `${conductor.nombre} ${conductor.apellido}`
+    await cambiarStatusViaje(viajeId, conductor.id, status, nombre, evento)
     await cargarViajes()
   }
 
