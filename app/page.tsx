@@ -21,6 +21,13 @@ import NotificacionesCard from "@/components/NotificacionesCard";
 import DriverSettings from "@/components/DriverSettings";
 import { TIPOS_INCIDENCIA } from "@/lib/constants/incidencias";
 import {
+  conductorCertificado,
+  esOfertaPendiente,
+  esViajeActivo,
+  getSiguienteAccionViaje,
+  normalizarCertificacion,
+} from "@/lib/constants/estados";
+import {
   RRBadge,
   RRBottomNav,
   RRButton,
@@ -35,7 +42,7 @@ import { formatMoney } from "@/lib/design-system/utils";
 
 // ─── TIPOS ───────────────────────────────────────────────────────────────────
 type View = "panel" | "viajes" | "ganancias" | "configuracion";
-type TripTab = "solicitados" | "aceptados";
+type TripTab = "ofertas" | "aceptados" | "historial";
 type OnboardingStep = "welcome" | "register" | "login" | "documents" | "legal";
 type DocFile = { file: File; preview: string } | null;
 
@@ -61,6 +68,8 @@ interface ConductorPerfil {
   viajes_realizados: number
   ganancias_total: number
   certificacion?: string
+  certificacion_estado?: string | null
+  certificacion_motivo?: string | null
 }
 
 interface ViajeDB {
@@ -89,7 +98,7 @@ interface ViajeDB {
   gastos_autorizados: number
   ajustes: number
   tipos_servicio: { nombre: string; descripcion: string | null } | null
-  vehiculos: { marca: string; modelo: string; placas: string; transmision: string | null } | null
+  vehiculos: { marca: string; modelo: string; anio: string | null; vin: string | null; placas: string; transmision: string | null; observaciones: string | null } | null
   usuarios: { nombre: string; apellido: string } | null
   empresas: { nombre_comercial: string | null } | null
   evidencias: {
@@ -124,15 +133,8 @@ function contarFotos(viaje: ViajeDB) {
     total + CAMPOS_FOTO_EVIDENCIA.filter(([campo]) => Boolean(evidencia[campo])).length, 0)
 }
 
-// Estatus en los que el viaje ya fue aceptado y está en ejecución
-// (lo usa tanto el banner del Panel como el de la sección Viajes).
-const ESTATUS_VIAJE_EN_CURSO = [
-  "Conductor en camino", "Recolección en proceso", "Evidencia inicial pendiente",
-  "Traslado en curso", "Entrega en proceso",
-] as const
-
 function obtenerViajeActivo(viajes: ViajeDB[]) {
-  return viajes.find(v => (ESTATUS_VIAJE_EN_CURSO as readonly string[]).includes(v.status))
+  return viajes.find(v => esViajeActivo(v) && !esOfertaPendiente(v))
 }
 
 // Abreviaturas de uso común para las 32 entidades. Es solo para la
@@ -168,6 +170,28 @@ function solicitantePorViaje(viaje: ViajeDB) {
   if (viaje.empresas?.nombre_comercial) return viaje.empresas.nombre_comercial
   if (viaje.usuarios) return `${viaje.usuarios.nombre} ${viaje.usuarios.apellido}`
   return "Cliente particular"
+}
+
+function timelineViaje(status: string) {
+  const orden = [
+    ['Aceptado', 'Aceptado'],
+    ['En camino al origen', 'Origen'],
+    ['Evidencia inicial pendiente', 'Evidencia inicial'],
+    ['Traslado en curso', 'Traslado'],
+    ['En destino', 'Destino'],
+    ['Evidencia final pendiente', 'Evidencia final'],
+    ['Entrega pendiente', 'Cierre'],
+  ] as const
+  const normalizado = status === 'Conductor asignado' ? 'Aceptado'
+    : status === 'Conductor en camino' ? 'En camino al origen'
+    : status === 'Recolección en proceso' ? 'Evidencia inicial pendiente'
+    : status === 'Entrega en proceso' ? 'En destino'
+    : status
+  const actual = Math.max(0, orden.findIndex(([estado]) => estado === normalizado))
+  return orden.map(([, label], index) => ({
+    label,
+    status: index < actual ? 'done' as const : index === actual ? 'current' as const : 'pending' as const,
+  }))
 }
 
 const MESES_ABREV = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep.", "oct.", "nov.", "dic."]
@@ -677,6 +701,10 @@ function StepDocumentos({ onBack, onNext }: { onBack: () => void; onNext: (data:
         <p className="text-white/50 text-sm mt-1">Los revisaremos en menos de 24 horas</p>
       </div>
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          <p className="font-bold">Checklist obligatorio para certificación</p>
+          <p>Licencia vigente, identificación oficial y comprobante de domicilio. Si un documento se rechaza, verás el motivo en Configuración &gt; Tus documentos para reemplazarlo.</p>
+        </div>
         {/* Licencia */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
@@ -878,14 +906,16 @@ function PanelView({ conductor, viajes, pagos, onDisponibilidadChange, onVerViaj
   const viajesSemana = viajes.filter(v => { const f = fechaLocal(v.fecha_programada) ?? new Date(v.created_at); return f >= desde && f < hasta })
   const viajeActivo = obtenerViajeActivo(viajes)
   const viajesCompletados = viajesSemana.filter(v => v.status === "Finalizado").length
-  const viajesActivos = viajesSemana.filter(v => !["Conductor asignado", "Finalizado", "Cancelado"].includes(v.status)).length
-  const viajesPendientes = viajesSemana.filter(v => v.status === "Conductor asignado").length
+  const viajesActivos = viajesSemana.filter(v => esViajeActivo(v)).length
+  const viajesPendientes = viajesSemana.filter(v => esOfertaPendiente(v)).length
   const gananciasSemana = viajesSemana.filter(v => v.status !== "Cancelado").reduce((s, v) => s + (v.pago_conductor ?? 0), 0)
   const proximoPago = pagos.find(p => p.estatus !== "Pagado") ?? pagos[0]
   const fechaPago = proximoPago?.fecha_pago
     ? new Date(`${proximoPago.fecha_pago}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })
     : "Por programar"
   const disponible = conductor?.disponibilidad === "Disponible"
+  const certificado = conductorCertificado(conductor?.certificacion_estado ?? conductor?.certificacion)
+  const estadoCertificacion = normalizarCertificacion(conductor?.certificacion_estado ?? conductor?.certificacion)
 
   return (
     <section className="rr-fade-in p-5 pb-24">
@@ -901,15 +931,20 @@ function PanelView({ conductor, viajes, pagos, onDisponibilidadChange, onVerViaj
           <div>
             <span className="block text-sm font-semibold text-rr-gray700">Disponibilidad</span>
             <span className={cx("text-xs font-medium", disponible ? "text-rr-success" : "text-rr-gray500")}>
-              {disponible ? "Recibiendo solicitudes de viaje" : "No disponible"}
+              {!certificado ? "Tu cuenta está en revisión; te avisaremos cuando puedas recibir viajes" : disponible ? "Recibiendo solicitudes de viaje" : "No disponible"}
             </span>
           </div>
           <RRSwitch
-            checked={disponible}
-            onChange={activo => onDisponibilidadChange(activo ? "Disponible" : "No disponible")}
+            checked={certificado && disponible}
+            onChange={activo => certificado && onDisponibilidadChange(activo ? "Disponible" : "No disponible")}
             label="Disponibilidad para recibir viajes"
           />
         </div>
+        {!certificado && (
+          <div className="mt-3 rounded-rrMd border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            Estado de certificación: <b>{estadoCertificacion}</b>. Completa o corrige tus documentos para activar ofertas.
+          </div>
+        )}
       </RRCard>
 
       {viajeActivo && (
@@ -1008,29 +1043,30 @@ function TripCompactCard({ viaje, expanded, onToggle, leftAccent, children }: {
   )
 }
 
-function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCambiarStatus, onCerrar, onRecargar, cargando }: {
+function ViajesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCambiarStatus, onCerrar, onRecargar, cargando }: {
   conductor: ConductorPerfil | null; viajes: ViajeDB[]; initialTab?: TripTab
   onAceptar: (id: string) => Promise<void>
-  onRechazar: (id: string) => Promise<void>
+  onRechazar: (id: string, motivo: string | null) => Promise<void>
   onCambiarStatus: (id: string, status: EstatusViaje, evento: string) => Promise<void>
   onCerrar: (id: string) => Promise<void>
   onRecargar: () => Promise<void>
   cargando: boolean
 }) {
-  const [activeTab, setActiveTab] = useState<TripTab>(initialTab ?? "solicitados")
+  const [activeTab, setActiveTab] = useState<TripTab>(initialTab ?? "ofertas")
   const [aceptando, setAceptando] = useState<string | null>(null)
-  const [evidenceViaje, setEvidenceViaje] = useState<ViajeDB | null>(null)
+  const [evidenceViaje, setEvidenceViaje] = useState<{ viaje: ViajeDB; tipo: "inicial" | "final" } | null>(null)
   const [evidenceViewViaje, setEvidenceViewViaje] = useState<ViajeDB | null>(null)
   const [incidenciaViaje, setIncidenciaViaje] = useState<ViajeDB | null>(null)
   const [semana, setSemana] = useState(() => inicioSemana())
   const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null)
   const [expandidoId, setExpandidoId] = useState<string | null>(null)
+  const [flujoViaje, setFlujoViaje] = useState<ViajeDB | null>(null)
 
   const viajeActivo = obtenerViajeActivo(viajes)
-  const solicitados = viajes.filter(v => v.status === "Conductor asignado")
-  const aceptados = viajes.filter(v =>
-    ["Conductor en camino","Recolección en proceso","Evidencia inicial pendiente",
-     "Traslado en curso","Entrega en proceso","Evidencia final pendiente"].includes(v.status))
+  const certificado = conductorCertificado(conductor?.certificacion_estado ?? conductor?.certificacion)
+  const solicitados = viajes.filter(esOfertaPendiente)
+  const aceptados = viajes.filter(v => esViajeActivo(v) && !esOfertaPendiente(v))
+  const historial = viajes.filter(v => ["Finalizado", "Cancelado"].includes(v.status))
   const diasSemana = Array.from({ length: 7 }, (_, i) => { const d = new Date(semana); d.setDate(d.getDate() + i); return d })
   const moverSemana = (cantidad: number) => setSemana(s => { const d = new Date(s); d.setDate(d.getDate() + cantidad * 7); return d })
   const isoLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -1038,6 +1074,7 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
   const toggleExpandido = (id: string) => setExpandidoId(prev => prev === id ? null : id)
 
   const handleAceptar = async (viaje: ViajeDB) => {
+    if (!window.confirm("Al aceptar este viaje te comprometes a recoger evidencia inicial y final.")) return
     setAceptando(viaje.id)
     await onAceptar(viaje.id)
     setAceptando(null)
@@ -1045,8 +1082,9 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
   }
 
   const handleRechazar = async (viaje: ViajeDB) => {
-    if (!window.confirm("¿Estás seguro de rechazar esta oferta?")) return
-    await onRechazar(viaje.id)
+    const motivo = window.prompt("Motivo opcional: lejos, horario, pago, emergencia u otro.", "otro")
+    if (motivo === null) return
+    await onRechazar(viaje.id, motivo.trim() || null)
   }
 
   return (
@@ -1080,16 +1118,21 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
         }
       </RRCard>
       <div className="mb-5 flex gap-2 rounded-rrMd bg-rr-gray100 p-1">
-        {(["solicitados","aceptados"] as TripTab[]).map(tab => (
+        {(["ofertas","aceptados","historial"] as TripTab[]).map(tab => (
           <button key={tab} type="button" onClick={() => setActiveTab(tab)}
             className={cx("flex-1 rounded-rrSm py-2 text-sm font-bold uppercase tracking-wide transition-all",
               activeTab === tab ? "bg-rr-secondary text-white" : "text-rr-gray500")}>
-            {tab === "solicitados" ? "Ofertas" : "Aceptados"}
+            {tab === "ofertas" ? "Ofertas" : tab === "aceptados" ? "En curso" : "Historial"}
           </button>
         ))}
       </div>
+      {!certificado && (
+        <RRCard className="mb-5 border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          Tu cuenta está en revisión; te avisaremos cuando puedas recibir viajes.
+        </RRCard>
+      )}
       {cargando && <div className="flex items-center justify-center py-12 text-rr-gray500 gap-2"><Loader className="h-5 w-5 animate-spin" /><span className="text-sm">Cargando viajes...</span></div>}
-      {!cargando && activeTab === "solicitados" && (
+      {!cargando && activeTab === "ofertas" && (
         <div className="space-y-4">
           {solicitados.length === 0
             ? <RRCard className="p-8 text-center"><Car className="h-10 w-10 text-rr-gray200 mx-auto mb-2" /><p className="text-sm text-rr-gray500">No hay viajes disponibles en este momento.</p><p className="text-xs text-rr-gray300 mt-1">Activa tu disponibilidad para recibir ofertas.</p></RRCard>
@@ -1122,8 +1165,8 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <RRButton variant="secondary" onClick={() => handleRechazar(viaje)}>Rechazar</RRButton>
-                  <RRButton variant="primary" onClick={() => handleAceptar(viaje)} disabled={aceptando === viaje.id}>
+                  <RRButton variant="secondary" onClick={() => handleRechazar(viaje)} disabled={!certificado}>Rechazar</RRButton>
+                  <RRButton variant="primary" onClick={() => handleAceptar(viaje)} disabled={!certificado || aceptando === viaje.id}>
                     {aceptando === viaje.id ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                     Aceptar
                   </RRButton>
@@ -1131,6 +1174,19 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
               </TripCompactCard>
             ))
           }
+        </div>
+      )}
+      {!cargando && activeTab === "historial" && (
+        <div className="space-y-4">
+          {historial.length === 0
+            ? <RRCard className="p-8 text-center"><FileText className="h-10 w-10 text-rr-gray200 mx-auto mb-2" /><p className="text-sm text-rr-gray500">Aún no hay historial.</p></RRCard>
+            : historial.map(viaje => (
+              <TripCompactCard key={viaje.id} viaje={viaje} expanded={expandidoId === viaje.id} onToggle={() => toggleExpandido(viaje.id)}>
+                <RRBadge variant={viaje.status === "Finalizado" ? "success" : "danger"}>{viaje.status.toUpperCase()}</RRBadge>
+                <p className="mt-3 text-sm font-bold text-rr-black">{viaje.origen_calle} → {viaje.destino_calle}</p>
+                {contarFotos(viaje) > 0 && <RRButton className="mt-3" variant="secondary" fullWidth onClick={() => setEvidenceViewViaje(viaje)}><Eye className="h-4 w-4" /> Ver evidencia ({contarFotos(viaje)} fotos)</RRButton>}
+              </TripCompactCard>
+            ))}
         </div>
       )}
       {!cargando && activeTab === "aceptados" && (
@@ -1146,16 +1202,24 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
                 {viaje.vehiculos && <p className="mb-1 text-xs text-rr-gray500">{viaje.vehiculos.marca} {viaje.vehiculos.modelo} · {viaje.vehiculos.placas}</p>}
                 {viaje.origen_contacto && <p className="text-xs text-rr-gray500 mb-1">Contacto: {viaje.origen_contacto} {viaje.origen_telefono && `· ${viaje.origen_telefono}`}</p>}
                 {viaje.instrucciones && <p className="text-xs text-rr-black bg-rr-warningLight rounded-rrSm p-2 mt-2">{viaje.instrucciones}</p>}
+                <div className="mt-3 rounded-rrMd border border-rr-gray100 bg-white p-3">
+                  <RRTimeline steps={timelineViaje(viaje.status)} />
+                </div>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-rr-gray500"><span>{viaje.fecha_programada || 'Sin fecha'} {viaje.hora_programada?.slice(0,5) || ''}</span><span className="text-right">{viaje.tipos_servicio?.nombre || 'Traslado'}</span></div>
                 {viaje.destino_contacto && <p className="mt-1 text-xs text-rr-gray500">Entrega: {viaje.destino_contacto} {viaje.destino_telefono && `· ${viaje.destino_telefono}`}</p>}
                 <div className="mt-3 space-y-2">
                   {contarFotos(viaje) > 0 && <RRButton variant="secondary" fullWidth onClick={() => setEvidenceViewViaje(viaje)}><Eye className="h-4 w-4" /> Ver evidencia ({contarFotos(viaje)} fotos)</RRButton>}
-                  {viaje.status === "Conductor en camino" && <RRButton variant="dark" fullWidth onClick={() => onCambiarStatus(viaje.id, "Recolección en proceso", "Llegada al origen")}>✓ Confirmé llegada al origen</RRButton>}
-                  {viaje.status === "Recolección en proceso" && <RRButton variant="dark" fullWidth onClick={() => setEvidenceViaje(viaje)}><Camera className="h-4 w-4" /> Cargar Evidencia Inicial</RRButton>}
-                  {viaje.status === "Evidencia inicial pendiente" && <RRButton variant="dark" fullWidth onClick={() => onCambiarStatus(viaje.id, "Traslado en curso", "Traslado iniciado")}>🚗 Iniciar traslado</RRButton>}
-                  {viaje.status === "Traslado en curso" && <RRButton variant="dark" fullWidth onClick={() => onCambiarStatus(viaje.id, "Entrega en proceso", "Llegada al destino")}>✓ Llegué al destino</RRButton>}
-                  {viaje.status === "Entrega en proceso" && <RRButton variant="dark" fullWidth onClick={() => setEvidenceViaje(viaje)}><Camera className="h-4 w-4" /> Cargar Evidencia Final</RRButton>}
-                   {viaje.status === "Evidencia final pendiente" && <RRButton variant="primary" fullWidth onClick={() => onCerrar(viaje.id)}><Check className="h-4 w-4" /> Cerrar viaje</RRButton>}
+                  {(() => {
+                    const accion = getSiguienteAccionViaje(viaje)
+                    if (!accion) return null
+                    if (accion.evidencia) {
+                      return <RRButton variant="dark" fullWidth onClick={() => setEvidenceViaje({ viaje, tipo: accion.evidencia! })}><Camera className="h-4 w-4" /> {accion.label}</RRButton>
+                    }
+                    if (accion.cerrar) {
+                      return <RRButton variant="primary" fullWidth onClick={() => onCerrar(viaje.id)}><Check className="h-4 w-4" /> {accion.label}</RRButton>
+                    }
+                    return <RRButton variant="dark" fullWidth onClick={() => accion.siguiente && onCambiarStatus(viaje.id, accion.siguiente, accion.evento ?? accion.label)}>{accion.requiereGps ? <MapPin className="h-4 w-4" /> : <Car className="h-4 w-4" />} {accion.label}</RRButton>
+                  })()}
                   <RRButton variant="secondary" fullWidth onClick={() => setIncidenciaViaje(viaje)}><TriangleAlert className="h-4 w-4" /> Reportar incidencia</RRButton>
                 </div>
               </TripCompactCard>
@@ -1164,13 +1228,13 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
         </div>
       )}
       {evidenceViaje && (
-        <EvidenceModal viaje={evidenceViaje} conductorId={conductor?.id ?? ""} onClose={() => setEvidenceViaje(null)}
+        <EvidenceModal viaje={evidenceViaje.viaje} tipo={evidenceViaje.tipo} conductorId={conductor?.id ?? ""} onClose={() => setEvidenceViaje(null)}
           onSubmit={async (datos) => {
             if (!conductor) return
-            const tipo = evidenceViaje.status === "Recolección en proceso" ? "inicial" : "final"
+            const { viaje, tipo } = evidenceViaje
             try {
               await subirEvidencia({
-              viaje_id: evidenceViaje.id,
+              viaje_id: viaje.id,
               conductor_id: conductor.id,
               conductor_nombre: `${conductor.nombre} ${conductor.apellido}`,
               km_inicial: tipo === "inicial" ? datos.km : undefined,
@@ -1197,8 +1261,156 @@ function VijesView({ conductor, viajes, initialTab, onAceptar, onRechazar, onCam
       )}
       {evidenceViewViaje && <EvidenceViewerModal viaje={evidenceViewViaje} onClose={() => setEvidenceViewViaje(null)} />}
       {incidenciaViaje && <IncidenciaModal viaje={incidenciaViaje} onClose={() => setIncidenciaViaje(null)} />}
+      {flujoViaje && (
+        <FlujoLlegadaOrigen
+          viaje={flujoViaje}
+          onClose={() => setFlujoViaje(null)}
+          onHeLlegado={() => onCambiarStatus(flujoViaje.id, "Recolección en proceso", "Llegada al origen")}
+          onUbicado={() => { setEvidenceViaje({ viaje: flujoViaje, tipo: "inicial" }); setFlujoViaje(null) }}
+          onNoUbicado={() => { setIncidenciaViaje(flujoViaje); setFlujoViaje(null) }}
+        />
+      )}
     </section>
   );
+}
+
+// ─── FLUJO LLEGADA AL ORIGEN ───────────────────────────────────────────────────
+// Reemplaza el botón único "Confirmé llegada al origen" por un mini-flujo
+// guiado de 3 pantallas. El cambio de estatus real (Conductor en camino →
+// Recolección en proceso) ocurre al tocar "He llegado"; los demás pasos son
+// solo navegación de UI. "Localizar vehículo" no es un estatus nuevo en BD:
+// es la pantalla previa a decidir si se abre la captura de evidencia o una
+// incidencia, dentro del mismo estatus "Recolección en proceso".
+type PasoFlujoLlegada = "detalle" | "en_camino" | "localizar"
+
+function FlujoLlegadaOrigen({ viaje, onClose, onHeLlegado, onUbicado, onNoUbicado }: {
+  viaje: ViajeDB
+  onClose: () => void
+  onHeLlegado: () => Promise<void>
+  onUbicado: () => void
+  onNoUbicado: () => void
+}) {
+  const [paso, setPaso] = useState<PasoFlujoLlegada>("detalle")
+  const [confirmando, setConfirmando] = useState(false)
+
+  const direccionOrigen = [viaje.origen_calle, viaje.origen_numero, viaje.origen_colonia, viaje.origen_estado]
+    .filter(Boolean).join(", ") || "Dirección no especificada"
+  const mapaSrc = `https://maps.google.com/maps?q=${encodeURIComponent(direccionOrigen)}&z=15&output=embed`
+  const urlRuta = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(direccionOrigen)}`
+
+  const handleHeLlegado = async () => {
+    setConfirmando(true)
+    try {
+      await onHeLlegado()
+      setPaso("localizar")
+    } catch (error) {
+      console.error("Error confirmando llegada al origen:", error)
+      alert("No se pudo confirmar tu llegada. Intenta de nuevo.")
+    } finally {
+      setConfirmando(false)
+    }
+  }
+
+  const titulo = paso === "detalle" ? "Detalle del viaje" : paso === "en_camino" ? "En camino al origen" : "Localizar vehículo"
+
+  return (
+    <div className="absolute inset-0 z-50 flex flex-col bg-white">
+      <div className="flex items-center gap-3 border-b border-rr-gray200 p-4">
+        {paso === "en_camino"
+          ? <button type="button" onClick={() => setPaso("detalle")}><ChevronLeft className="h-5 w-5 text-rr-gray500" /></button>
+          : <span className="w-5" />
+        }
+        <div className="flex-1">
+          <h3 className="font-bold text-rr-black">{titulo}</h3>
+          <p className="text-xs text-rr-gray500">Viaje #{viaje.folio ?? viaje.id.slice(0, 8)}</p>
+        </div>
+        <button type="button" onClick={onClose}><X className="h-5 w-5 text-rr-gray500" /></button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        {paso === "detalle" && (
+          <div className="space-y-4">
+            <div className="flex gap-3">
+              <div className="flex flex-col items-center pt-1">
+                <div className="h-2.5 w-2.5 rounded-full bg-rr-success" />
+                <div className="my-1 h-8 w-0.5 bg-rr-gray200" />
+                <div className="h-2.5 w-2.5 rounded-full bg-rr-danger" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-rr-gray500">Origen</p>
+                <p className="text-sm font-semibold leading-tight text-rr-black">{[viaje.origen_calle, viaje.origen_colonia].filter(Boolean).join(", ")}</p>
+                <p className="mt-2 text-xs text-rr-gray500">Destino</p>
+                <p className="text-sm font-semibold leading-tight text-rr-black">{[viaje.destino_calle, viaje.destino_colonia].filter(Boolean).join(", ")}</p>
+              </div>
+            </div>
+            <div className="space-y-2 rounded-rrMd border border-rr-gray100 bg-rr-bg p-3 text-sm">
+              {viaje.vehiculos && <div className="flex justify-between"><span className="text-rr-gray500">Vehículo:</span><span className="font-medium text-rr-black">{viaje.vehiculos.marca} {viaje.vehiculos.modelo} · {viaje.vehiculos.placas}</span></div>}
+              <div className="flex justify-between gap-3"><span className="text-rr-gray500">Servicio:</span><span className="text-right font-medium text-rr-black">{viaje.tipos_servicio?.nombre ?? "Traslado de vehículo"}</span></div>
+              {viaje.fecha_programada && <div className="flex justify-between"><span className="text-rr-gray500">Fecha:</span><span className="font-medium text-rr-black">{viaje.fecha_programada} {viaje.hora_programada ? `· ${viaje.hora_programada.slice(0, 5)}` : ""}</span></div>}
+              {viaje.origen_contacto && <div className="flex justify-between gap-3"><span className="text-rr-gray500">Contacto origen:</span><span className="text-right font-medium text-rr-black">{viaje.origen_contacto} {viaje.origen_telefono && `· ${viaje.origen_telefono}`}</span></div>}
+              <div className="flex items-center justify-between pt-1"><span className="font-bold text-rr-gray700">Tu ganancia:</span><span className="text-lg font-bold text-rr-success">{formatMoney(viaje.pago_conductor)}</span></div>
+            </div>
+            {viaje.instrucciones && <div className="rounded-lg bg-rr-warningLight p-3 text-xs text-rr-black"><span className="font-bold">Instrucciones:</span> {viaje.instrucciones}</div>}
+          </div>
+        )}
+
+        {paso === "en_camino" && (
+          <div className="space-y-3">
+            <div>
+              <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-rr-gray500"><MapPin className="h-3.5 w-3.5" /> Punto de origen</p>
+              <p className="text-sm font-semibold text-rr-black">{direccionOrigen}</p>
+            </div>
+            <iframe
+              src={mapaSrc}
+              className="h-64 w-full rounded-rrMd border border-rr-gray200"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              title="Mapa del punto de origen"
+            />
+          </div>
+        )}
+
+        {paso === "localizar" && (
+          <div className="space-y-4">
+            <p className="text-sm font-bold text-rr-gray700">Vehículo a trasladar:</p>
+            <div className="space-y-2 rounded-rrMd border border-rr-gray100 bg-rr-bg p-3 text-sm">
+              <div className="flex justify-between"><span className="text-rr-gray500">Marca:</span><span className="font-medium text-rr-black">{viaje.vehiculos?.marca ?? "—"}</span></div>
+              <div className="flex justify-between"><span className="text-rr-gray500">Modelo:</span><span className="font-medium text-rr-black">{viaje.vehiculos?.modelo ?? "—"}</span></div>
+              <div className="flex justify-between"><span className="text-rr-gray500">Año:</span><span className="font-medium text-rr-black">{viaje.vehiculos?.anio ?? "—"}</span></div>
+              <div className="flex justify-between"><span className="text-rr-gray500">VIN:</span><span className="font-mono font-medium text-rr-black">{viaje.vehiculos?.vin ?? "—"}</span></div>
+              <div className="flex justify-between"><span className="text-rr-gray500">Placas:</span><span className="font-medium text-rr-black">{viaje.vehiculos?.placas ?? "—"}</span></div>
+            </div>
+            {(viaje.vehiculos?.observaciones || viaje.instrucciones) && (
+              <div className="rounded-lg bg-rr-warningLight p-3 text-xs text-rr-black">
+                <span className="font-bold">Instrucciones especiales:</span> {viaje.vehiculos?.observaciones || viaje.instrucciones}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-rr-gray100 p-4">
+        {paso === "detalle" && (
+          <RRButton variant="primary" fullWidth onClick={() => setPaso("en_camino")}>Estoy en camino</RRButton>
+        )}
+        {paso === "en_camino" && (
+          <div className="grid grid-cols-2 gap-3">
+            <RRButton variant="secondary" onClick={() => window.open(urlRuta, "_blank", "noopener,noreferrer")}><MapPin className="h-4 w-4" /> Ruta</RRButton>
+            <RRButton variant="primary" onClick={handleHeLlegado} disabled={confirmando}>
+              {confirmando ? <Loader className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              He llegado
+            </RRButton>
+          </div>
+        )}
+        {paso === "localizar" && (
+          <div className="grid grid-cols-2 gap-3">
+            <RRButton variant="secondary" onClick={onNoUbicado}><TriangleAlert className="h-4 w-4" /> No ubicado</RRButton>
+            <RRButton variant="primary" onClick={onUbicado}><Check className="h-4 w-4" /> Ubicado</RRButton>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ─── GANANCIAS VIEW ───────────────────────────────────────────────────────────
@@ -1291,8 +1503,8 @@ function EvidenceViewerModal({ viaje, onClose }: { viaje: ViajeDB; onClose: () =
 }
 
 // ─── EVIDENCE MODAL ───────────────────────────────────────────────────────────
-function EvidenceModal({ viaje, conductorId, onClose, onSubmit }: {
-  viaje: ViajeDB; conductorId: string; onClose: () => void
+function EvidenceModal({ viaje, tipo, conductorId, onClose, onSubmit }: {
+  viaje: ViajeDB; tipo: "inicial" | "final"; conductorId: string; onClose: () => void
   onSubmit: (datos: { km: number; combustible: string; danos: string; llaves: number; fotos: Record<string, string> }) => Promise<void>
 }) {
   const [km, setKm] = useState("")
@@ -1309,7 +1521,12 @@ function EvidenceModal({ viaje, conductorId, onClose, onSubmit }: {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const slotActivoRef = useRef<string | null>(null)
 
-  const tipo = viaje.status === "Recolección en proceso" ? "inicial" : "final"
+  // tipo ya viene como prop — antes se inferia de viaje.status, pero ese
+  // objeto puede ser un closure viejo (p.ej. desde FlujoLlegadaOrigen, que
+  // captura el viaje en el momento de abrir el flujo, antes de que su
+  // estatus avance) y terminaba mandando "final" cuando en realidad era
+  // evidencia inicial, provocando el error de Postgres "El viaje no está
+  // listo para evidencia final".
   // El id del slot es el que usa el componente de UI; la columna real en
   // la base (y el nombre de carpeta en el bucket) usa el nombre en
   // español — este mapa traduce entre ambos.
@@ -1461,7 +1678,7 @@ function BottomNavigation({ activeView, onChange }: { activeView: View; onChange
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function DriverApp() {
   const [activeView, setActiveView] = useState<View>("panel");
-  const [tripTabInicial, setTripTabInicial] = useState<TripTab>("solicitados");
+  const [tripTabInicial, setTripTabInicial] = useState<TripTab>("ofertas");
   const [conductor, setConductor] = useState<ConductorPerfil | null>(null);
   const [viajes, setViajes] = useState<ViajeDB[]>([]);
   const [pagos, setPagos] = useState<PagoResumen[]>([]);
@@ -1599,7 +1816,7 @@ export default function DriverApp() {
   // Navega a la pestaña de Viajes en la sub-pestaña indicada. La usa
   // tanto la navegación inferior (siempre abre en "solicitados") como
   // la tarjeta de "Viaje en curso" del panel (abre directo en "aceptados").
-  const irAViajes = (tab: TripTab = "solicitados") => {
+  const irAViajes = (tab: TripTab = "ofertas") => {
     setTripTabInicial(tab)
     showView("viajes")
   }
@@ -1618,10 +1835,10 @@ export default function DriverApp() {
     await cargarViajes()
   }
 
-  const handleRechazarViaje = async (viajeId: string) => {
+  const handleRechazarViaje = async (viajeId: string, motivo: string | null = null) => {
     const nombre = conductor ? `${conductor.nombre} ${conductor.apellido}` : "Conductor"
     try {
-      await rechazarViaje(viajeId, nombre)
+      await rechazarViaje(viajeId, nombre, motivo)
       await cargarViajes()
     } catch (e) {
       console.error("Error rechazando viaje:", e)
@@ -1794,11 +2011,11 @@ export default function DriverApp() {
         <Header onOpenSettings={() => showView("configuracion")} conductor={conductor} />
         <main ref={mainRef} className="no-scrollbar relative flex-1 overflow-y-auto bg-[linear-gradient(180deg,#F8FAFC_0%,#EDF4FF_100%)]">
           {activeView === "panel" && <PanelView conductor={conductor} viajes={viajes} pagos={pagos} onDisponibilidadChange={handleDisponibilidadChange} onVerViajeActivo={() => irAViajes("aceptados")} cargando={cargando} />}
-          {activeView === "viajes" && <VijesView conductor={conductor} viajes={viajes} initialTab={tripTabInicial} onAceptar={handleAceptar} onRechazar={handleRechazarViaje} onCambiarStatus={handleCambiarStatus} onCerrar={handleCerrarViaje} onRecargar={cargarViajes} cargando={cargando} />}
+          {activeView === "viajes" && <ViajesView conductor={conductor} viajes={viajes} initialTab={tripTabInicial} onAceptar={handleAceptar} onRechazar={handleRechazarViaje} onCambiarStatus={handleCambiarStatus} onCerrar={handleCerrarViaje} onRecargar={cargarViajes} cargando={cargando} />}
           {activeView === "ganancias" && <GananciasView conductor={conductor} pagos={pagos} viajes={viajes} gastos={gastos} cargando={cargando} />}
           {activeView === "configuracion" && <DriverSettings conductor={conductor} viajes={viajes} onBack={() => showView("panel")} onProfileUpdated={p => setConductor(p as ConductorPerfil)} />}
         </main>
-        <BottomNavigation activeView={activeView} onChange={v => v === "viajes" ? irAViajes("solicitados") : showView(v)} />
+        <BottomNavigation activeView={activeView} onChange={v => v === "viajes" ? irAViajes("ofertas") : showView(v)} />
       </div>
     </div>
   );
