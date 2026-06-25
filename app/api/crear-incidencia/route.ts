@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { TIPOS_INCIDENCIA, getConfigIncidencia } from '@/lib/constants/incidencias'
+import { TIPOS_INCIDENCIA } from '@/lib/constants/incidencias'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -23,7 +23,6 @@ export async function POST(request: Request) {
   const { data: conductor } = await admin.from('conductores').select('id').eq('auth_id', auth.user.id).maybeSingle()
   if (!conductor) return response('Perfil de conductor no encontrado.', 404)
 
-  const config = getConfigIncidencia(body.tipo)
   let viajeId: string | null = null
   let usuarioId: string | null = null
   if (body.viajeId) {
@@ -40,35 +39,9 @@ export async function POST(request: Request) {
     tipo: body.tipo,
     descripcion: body.descripcion.trim(),
     estatus: 'Nueva',
-    prioridad: config.prioridad,
-    bloquea_viaje: config.bloqueaViaje,
-    requiere_respuesta_operaciones: config.bloqueaViaje || ['Crítica'].includes(config.prioridad),
-    metadata: { requiere_fotos: config.requiereFotos, sla_horas: config.slaHoras, origen: 'conductor_app' },
+    prioridad: 'Media',
     responsable_interno: '—',
   }).select('id').single()
   if (error) return response(`No se pudo registrar la incidencia: ${error.message}`, 500)
-
-  if (viajeId && config.bloqueaViaje) {
-    await admin.from('viajes').update({ status: 'En revisión por incidencia' }).eq('id', viajeId)
-    await admin.from('timeline_viaje').insert({
-      viaje_id: viajeId,
-      evento: `Incidencia bloqueante: ${body.tipo}`,
-      actor: 'Sistema',
-      actor_tipo: 'sistema',
-    })
-  }
-
-  await admin.from('timeline_operativo').insert({
-    entidad_tipo: 'incidencia',
-    entidad_id: data.id,
-    viaje_id: viajeId,
-    conductor_id: conductor.id,
-    actor_id: conductor.id,
-    actor_tipo: 'conductor',
-    evento: `Incidencia creada: ${body.tipo}`,
-    estado_nuevo: 'Nueva',
-    metadata: { prioridad: config.prioridad, bloquea_viaje: config.bloqueaViaje },
-  })
-
   return NextResponse.json({ ok: true, id: data.id })
 }

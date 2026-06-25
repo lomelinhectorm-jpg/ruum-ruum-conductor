@@ -55,8 +55,6 @@ export async function POST(request: Request) {
   if (!isAcceptablePassword(password)) {
     return badRequest('La contraseña debe tener al menos 8 caracteres, una letra y un número.')
   }
-  const clabe = perfil.cuenta_clabe ? String(perfil.cuenta_clabe).replace(/\D/g, '') : null
-  if (clabe && clabe.length !== 18) return badRequest('La CLABE debe tener 18 dígitos.')
 
   const email = String(perfil.email).toLowerCase().trim()
   const admin = createClient(supabaseUrl, serviceRoleKey, {
@@ -76,7 +74,7 @@ export async function POST(request: Request) {
     municipio: perfil.municipio ? String(perfil.municipio) : null,
     estado_geo: perfil.estado_geo ? String(perfil.estado_geo) : null,
     cuenta_banco: perfil.cuenta_banco ? String(perfil.cuenta_banco) : null,
-    cuenta_clabe: clabe,
+    cuenta_clabe: perfil.cuenta_clabe ? String(perfil.cuenta_clabe) : null,
     cuenta_titular: perfil.cuenta_titular ? String(perfil.cuenta_titular) : null,
   }
 
@@ -105,16 +103,8 @@ export async function POST(request: Request) {
       auth_id: authData.user.id,
       ...conductorPayload,
       disponibilidad: 'No disponible',
-      certificacion: 'Pendiente de documentos',
-      certificacion_estado: 'Pendiente de documentos',
-      certificacion_actualizada_at: new Date().toISOString(),
+      certificacion: 'Pendiente de validación',
       calificacion: 0,
-      metadata_registro: {
-        origen: 'conductor_app',
-        acepto_terminos: true,
-        acepto_privacidad: true,
-        aceptado_at: new Date().toISOString(),
-      },
     })
     .select('id')
     .single()

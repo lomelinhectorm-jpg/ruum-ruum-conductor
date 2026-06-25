@@ -2,7 +2,6 @@
 
 import { supabase } from '@/lib/supabase'
 import type { EstatusViaje } from '@/lib/supabase'
-import type { DisponibilidadConductor } from '@/lib/constants/estados'
 
 // ── AUTH ────────────────────────────────────────────────────
 
@@ -39,9 +38,7 @@ export async function getMiPerfilConductor(authId: string) {
     .select(`
       id, nombre, apellido, email, telefono, curp, foto_url,
       domicilio_calle, domicilio_numero, domicilio_colonia, domicilio_cp,
-      municipio, estado_geo, disponibilidad, certificacion, certificacion_estado,
-      certificacion_motivo, certificacion_actualizada_at, fecha_certificacion,
-      suspendido_hasta, motivo_suspension, calificacion,
+      municipio, estado_geo, disponibilidad, certificacion, calificacion,
       viajes_realizados, ganancias_total, cuenta_banco, cuenta_clabe, cuenta_titular
     `)
     .eq('auth_id', authId)
@@ -76,9 +73,7 @@ export async function actualizarPerfilConductor(conductorId: string, datos: Camp
     .select(`
       id, nombre, apellido, email, telefono, curp, foto_url,
       domicilio_calle, domicilio_numero, domicilio_colonia, domicilio_cp,
-      municipio, estado_geo, disponibilidad, certificacion, certificacion_estado,
-      certificacion_motivo, certificacion_actualizada_at, fecha_certificacion,
-      suspendido_hasta, motivo_suspension, calificacion,
+      municipio, estado_geo, disponibilidad, certificacion, calificacion,
       viajes_realizados, ganancias_total, cuenta_banco, cuenta_clabe, cuenta_titular
     `)
     .single()
@@ -89,7 +84,7 @@ export async function actualizarPerfilConductor(conductorId: string, datos: Camp
 
 export async function updateDisponibilidad(
   conductorId: string,
-  disponibilidad: DisponibilidadConductor | 'En viaje' | 'Pausado'
+  disponibilidad: 'Disponible' | 'No disponible' | 'En viaje' | 'Pausado'
 ) {
   const { data, error } = await supabase
     .from('conductores')
@@ -103,32 +98,6 @@ export async function updateDisponibilidad(
 }
 
 // ── VIAJES ──────────────────────────────────────────────────
-
-export async function getMisOfertasConductor(conductorId: string) {
-  const { data, error } = await supabase
-    .from('ofertas_viaje')
-    .select(`
-      id, viaje_id, conductor_id, status, pago_estimado, distancia_estimada_km,
-      tiempo_estimado_min, expira_at, motivo_rechazo, accepted_at, rejected_at, created_at,
-      viajes(
-        id, folio, status, fecha_programada, hora_programada, created_at, updated_at,
-        origen_calle, origen_numero, origen_colonia, origen_estado, origen_contacto, origen_telefono,
-        destino_calle, destino_numero, destino_colonia, destino_estado, destino_contacto, destino_telefono,
-        referencias, instrucciones, pago_conductor, gastos_autorizados, ajustes,
-        tipos_servicio(nombre, descripcion),
-        vehiculos(marca, modelo, anio, vin, placas, transmision, observaciones),
-        usuarios(nombre, apellido),
-        empresas(nombre_comercial),
-        evidencias(id)
-      )
-    `)
-    .eq('conductor_id', conductorId)
-    .eq('status', 'Enviada')
-    .order('expira_at', { ascending: true })
-
-  if (error) throw error
-  return data
-}
 
 // Una sola query con todos los viajes no cerrados del conductor. El
 // split entre "solicitados" (Conductor asignado) y "aceptados" (en
@@ -147,7 +116,7 @@ export async function getMisViajesConductor(conductorId: string) {
       destino_calle, destino_numero, destino_colonia, destino_estado, destino_contacto, destino_telefono,
       referencias, instrucciones, pago_conductor, gastos_autorizados, ajustes,
       tipos_servicio(nombre, descripcion),
-      vehiculos(marca, modelo, anio, vin, placas, transmision, observaciones),
+      vehiculos(marca, modelo, placas, transmision),
       usuarios(nombre, apellido),
       empresas(nombre_comercial),
       evidencias(
@@ -163,10 +132,9 @@ export async function getMisViajesConductor(conductorId: string) {
   return data
 }
 
-export async function aceptarViaje(viajeId: string, conductorId: string, conductorNombre: string, ofertaId?: string | null) {
+export async function aceptarViaje(viajeId: string, conductorId: string, conductorNombre: string) {
   const { data, error } = await supabase.rpc('aceptar_viaje_conductor', {
     p_viaje_id: viajeId,
-    p_oferta_id: ofertaId ?? null,
     p_conductor_id: conductorId,
     p_actor_nombre: conductorNombre,
   })
@@ -175,24 +143,31 @@ export async function aceptarViaje(viajeId: string, conductorId: string, conduct
   return data
 }
 
-export async function rechazarOfertaViaje(ofertaId: string, motivo: string | null, conductorNombre: string) {
-  const { data, error } = await supabase.rpc('rechazar_oferta_viaje', {
-    p_oferta_id: ofertaId,
-    p_motivo: motivo,
-    p_actor_nombre: conductorNombre,
-  })
-  if (error) throw error
-  return data
-}
+// No reutiliza cambiarStatusViaje a propósito: rechazar también debe
+// limpiar conductor_id (ver RT-02), algo que las demás transiciones
+// de estatus no deben hacer. Mezclar ese caso especial dentro de la
+// función genérica lo esconde; mejor una función dedicada.
+export async function rechazarViaje(viajeId: string, conductorNombre: string) {
+  // No se encadena .select().single(): al limpiar conductor_id en este
+  // mismo update, la fila deja de cumplir la política RLS
+  // conductor_select_viajes (conductor_id = mi_conductor_id()), así que
+  // el RETURNING vendría vacío bajo RLS aunque el UPDATE sí se aplique
+  // — y .single() lanzaría un error de "0 filas" sobre una operación
+  // que en realidad sí tuvo éxito. Nada en el código consume el valor
+  // de retorno de esta función, así que no hay costo en omitirlo.
+  const { error } = await supabase
+    .from('viajes')
+    .update({ status: 'Pendiente de asignación', conductor_id: null })
+    .eq('id', viajeId)
 
-export async function rechazarViaje(viajeId: string, conductorNombre: string, motivo: string | null = null) {
-  const { data, error } = await supabase.rpc('rechazar_oferta_viaje', {
-    p_viaje_id: viajeId,
-    p_motivo: motivo,
-    p_actor_nombre: conductorNombre,
-  })
   if (error) throw error
-  return data
+
+  await supabase.from('timeline_viaje').insert({
+    viaje_id: viajeId,
+    evento: 'Conductor rechazó el viaje',
+    actor: conductorNombre,
+    actor_tipo: 'conductor',
+  })
 }
 
 // Antes hacía un .update({ status }) directo: cualquier conductor con una

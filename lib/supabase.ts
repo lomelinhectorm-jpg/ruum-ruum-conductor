@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js'
-import type { CertificacionConductor, DisponibilidadConductor, EstatusViaje } from '@/lib/constants/estados'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -9,7 +8,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   realtime: { params: { eventsPerSecond: 10 } },
 })
 
-export type { EstatusViaje }
+export type EstatusViaje =
+  | 'Solicitud recibida' | 'Pendiente de asignación'
+  | 'Conductor asignado' | 'Conductor en camino' | 'Recolección en proceso'
+  | 'Evidencia inicial pendiente' | 'Traslado en curso' | 'Entrega en proceso'
+  | 'Evidencia final pendiente' | 'Finalizado' | 'Cancelado' | 'En revisión por incidencia'
 
 export interface Viaje {
   id: string; folio: string | null; usuario_id: string | null
@@ -31,11 +34,8 @@ export interface Viaje {
 export interface Conductor {
   id: string; auth_id: string | null; nombre: string; apellido: string
   email: string; telefono: string; municipio: string | null; estado_geo: string | null
-  disponibilidad: DisponibilidadConductor | 'En viaje' | 'Pausado'
-  certificacion: string; certificacion_estado: CertificacionConductor | null
-  certificacion_motivo: string | null; certificacion_actualizada_at: string | null
-  fecha_certificacion: string | null; suspendido_hasta: string | null; motivo_suspension: string | null
-  calificacion: number; viajes_realizados: number
+  disponibilidad: 'Disponible' | 'No disponible' | 'En viaje' | 'Pausado'
+  certificacion: string; calificacion: number; viajes_realizados: number
   ganancias_total: number; cuenta_banco: string | null
   cuenta_clabe: string | null; cuenta_titular: string | null; created_at: string
 }
